@@ -1,2 +1,14 @@
+# Dependencies (covers root + services/*/node_modules + apps/*/node_modules)
+node_modules/
+**/node_modules/
+
+# Environment Secrets
 .env
-services\auth-service\node_modules
+*.env
+**/.env
+
+# Build Artifacts & Logs
+dist/
+build/
+.next/
+*.log
