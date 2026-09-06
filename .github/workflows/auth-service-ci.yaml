@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
           cache-dependency-path: 'services/auth-service/package-lock.json'
       
@@ -30,3 +30,11 @@ jobs:
         run: npm run test
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy Hook (upkri)
+        run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL}}

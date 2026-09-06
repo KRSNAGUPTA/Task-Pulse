@@ -1,6 +1,9 @@
 {
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev":"tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
