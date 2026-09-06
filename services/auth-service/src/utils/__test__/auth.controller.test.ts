@@ -4,6 +4,7 @@ import request from "supertest";
 import app from "../../index.js";
 import { hashPassword } from "../password";
 import * as passwordUtils from "../password.js";
+import * as jwtUtils from "../jwt.js";
 
 vi.mock("../prisma", () => ({
     prisma: {
@@ -153,5 +154,47 @@ describe("Auth Controller - Register: Integration Test", () => {
             })
         })
 
+    })
+
+    describe("POST /api/auth/logout",()=>{
+        it("Should Logout",async()=>{
+            const res = await request(app).post("/api/auth/logout");
+            expect(res.status).toBe(200)
+            expect(res.body.message).toMatch("User logout")
+
+            const cookie = res.header["set-cookie"] as unknown as string[]
+            expect(cookie).toBeDefined();
+            expect(cookie[0]).toContain("RefreshToken=;")
+        })
+    })
+
+    describe("POST /api/auth/refresh",()=>{
+        it("Refresh Token Missing", async()=>{
+            const res = await request(app).post("/api/auth/refresh");
+            expect(res.status).toBe(401)
+            expect(res.body.message).toMatch("Refresh token missing")
+        })
+        it("Invalid Refresh Token", async()=>{
+            vi.spyOn(jwtUtils, "verifyToken").mockImplementationOnce(()=>{
+                throw new Error("Invalid token")
+            })
+            const res = await request(app).post("/api/auth/refresh").set('Cookie', 'RefreshToken=invalidtoken');
+            expect(res.status).toBe(500)
+            expect(res.body.message).toMatch("Internal server error during token refresh")
+        })
+
+        it("Should Refresh Token", async()=>{
+            const payload = {
+                userId: "32323",
+                email: "user@test.com"
+            }
+            const newAccessToken = "newaccesstoken"
+            vi.spyOn(jwtUtils, "verifyToken").mockReturnValueOnce(payload as any)
+            vi.spyOn(jwtUtils, "generateToken").mockReturnValueOnce(newAccessToken)
+
+            const res = await request(app).post("/api/auth/refresh").set('Cookie', 'RefreshToken=validtoken');
+            expect(res.status).toBe(200)
+            expect(res.body.token.accessToken).toMatch(newAccessToken)
+        })
     })
 })

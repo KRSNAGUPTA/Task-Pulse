@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/prisma.js";
 import { comparePassword, hashPassword } from "../utils/password.js";
-import { generateToken } from "../utils/jwt.js";
+import { generateToken, verifyToken } from "../utils/jwt.js";
 
 export async function register(req: Request, res: Response): Promise<void> {
   // console.log("Received Registraion")
@@ -65,6 +65,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       httpOnly: true,
+      path: "/api/auth/refresh"
     });
 
     res.status(201).json({
@@ -124,6 +125,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       sameSite: "lax",
+      path: "/api/auth/refresh"
     });
 
     res.status(200).json({
@@ -136,4 +138,49 @@ export async function login(req: Request, res: Response): Promise<void> {
       message: "Internal server error during login",
     });
   }
+}
+
+export async function logout(req: Request, res: Response): Promise<void> {
+  try {
+    res.clearCookie('RefreshToken', {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/api/auth/refresh"
+    })
+    res.status(200).json({
+      message: "User logout"
+    })
+
+  } catch (error: any) {
+    console.error(`Failed to logout`, error?.message || error)
+    res.status(500).json({
+      message: "Internal Server Error at logout"
+    })
+  }
+}
+
+export async function refresh(req:Request, res:Response):Promise<void> {
+  try {
+    const refreshToken = req.cookies?.RefreshToken;
+    if (!refreshToken) {
+      res.status(401).json({
+        message: "Refresh token missing",
+      });
+      return;
+    }
+    const decoded = verifyToken(refreshToken);
+    
+    const newAccessToken = generateToken({userId: decoded.userId, email: decoded.email}, "15m");
+    res.status(200).json({
+      token: { accessToken: newAccessToken },
+    }); 
+    
+  } catch (error:any) {
+    console.error("Error while refreshing token", error?.message || error)
+    res.status(500).json({
+      message: "Internal server error during token refresh",
+    });
+  }
+  
 }

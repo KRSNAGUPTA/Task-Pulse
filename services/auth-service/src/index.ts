@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import { prisma } from './utils/prisma.js';
 import authRoutes from "./routes/auth.routes.js"
+import cookieParser from 'cookie-parser';
 
 dotenv.config();
 
@@ -12,7 +13,7 @@ const PORT = process.env.PORT || 4001;
 // 1. MUST BE BEFORE ROUTES
 app.use(cors());
 app.use(express.json());
-
+app.use(cookieParser());
 // 2. Safely handle optional body properties
 app.post('/test-user', async (req, res) => {
   try {
