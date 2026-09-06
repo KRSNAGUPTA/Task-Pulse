@@ -14,6 +14,12 @@ const PORT = process.env.PORT || 4001;
 app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
+
+app.get("/",(req, res)=>{
+  res.status(200).json({
+    message:"Task Pulse: Auth Service is live!"
+  })
+})
 // 2. Safely handle optional body properties
 app.post('/test-user', async (req, res) => {
   try {
