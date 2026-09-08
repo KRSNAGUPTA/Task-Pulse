@@ -23,7 +23,7 @@ export interface ITask {
     description?: string;
     status: TaskStatus;
     priority: TaskPriority;
-    dueDate: Date;
+    dueDate: Date | null;
     tags: string[];
     subtasks: ISubTask[];
     metadata?: Record<string, unknown>
