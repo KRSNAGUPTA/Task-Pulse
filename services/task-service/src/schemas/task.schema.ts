@@ -18,7 +18,7 @@ export const CreateTaskSchema = z.object({
     dueDate: z.coerce.date().nullable().optional().default(null),
     tags: z.array(z.string().trim().min(1)).optional().default([]),
     subtasks: z.array(SubtaskSchema).optional().default([]),
-    metadata: z.record(z.string(), z.unknown())
+    metadata: z.record(z.string(), z.unknown()).optional().default({})
 
 })
 

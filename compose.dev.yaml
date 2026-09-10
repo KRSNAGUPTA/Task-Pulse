@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:17-alpine
@@ -25,6 +23,19 @@ services:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+
+  # micro-services
+  task-service:
+    build:
+      context: services/task-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/task-service/.env
+    container_name: task-service
+    ports:
+      - "5002:5002"
+    depends_on:
+      - mongodb
 
 volumes:
   pgdata:
