@@ -36,7 +36,19 @@ services:
       - "5002:5002"
     depends_on:
       - mongodb
-
+    
+  auth-service:
+    build:
+      context: services/auth-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/auth-service/.env
+    container_name: auth-service
+    ports:
+      - "5003:5003"
+    depends_on:
+      - postgres
+    command: sh -c "npx prisma db push --url \"$$DATABASE_URL\" && node dist/index.js"
 volumes:
   pgdata:
   mongo-data:

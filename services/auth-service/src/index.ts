@@ -8,11 +8,12 @@ import cookieParser from 'cookie-parser';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 4001;
+const PORT = process.env.PORT || 5003;
 
 // 1. MUST BE BEFORE ROUTES
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({extended: true}));  
 app.use(cookieParser());
 
 app.get("/",(req, res)=>{

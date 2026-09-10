@@ -7,6 +7,7 @@ export async function register(req: Request, res: Response): Promise<void> {
   // console.log("Received Registraion")
   try {
     const { name, email, password } = req.body || {};
+    // console.log("Received Registration:", { name, email, password: password ? "****" : undefined });
 
     const trimmedEmail = typeof email === "string" ? email.trim() : "";
     const trimmedPassword = typeof password === "string" ? password.trim() : "";
