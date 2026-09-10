@@ -4,8 +4,6 @@ node_modules/
 
 # Environment Secrets
 .env
-*.env
-**/.env
 
 # Build Artifacts & Logs
 dist/
