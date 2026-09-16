@@ -1,3 +1,4 @@
+# --- STAGE 1: Build Stage ---
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -5,7 +6,6 @@ WORKDIR /app
 ENV NODE_ENV=development
 
 COPY package*.json ./
-
 COPY prisma ./prisma/
 
 RUN npm ci
@@ -14,6 +14,7 @@ COPY . .
 RUN npm run build
 
 
+# --- STAGE 2: Production Runner Stage ---
 FROM node:20-alpine AS runner
 
 WORKDIR /app
@@ -29,4 +30,5 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 5001
 
-CMD ["node", "dist/index.js"]
+# Automatically push schema to PostgreSQL on boot, then start the server
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

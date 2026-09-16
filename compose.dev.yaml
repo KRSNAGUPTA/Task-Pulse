@@ -48,7 +48,6 @@ services:
       - "5003:5003"
     depends_on:
       - postgres
-    command: sh -c "npx prisma db push --url \"$$DATABASE_URL\" && node dist/index.js"
 volumes:
   pgdata:
   mongo-data:
