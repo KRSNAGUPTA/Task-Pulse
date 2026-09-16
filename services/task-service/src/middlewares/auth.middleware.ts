@@ -2,16 +2,19 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
 export const authenticateUser = (req: Request, res: Response, next: NextFunction): void => {
+  // console.log("Middle log")
   try {
+
+    // console.log("In Auth Header")
     const authHeader = req.headers.authorization;
     
+    console.log("Auth Header:", authHeader)
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       res.status(401).json({
-        message: "Unauthorized: Token missing or invalid"
+        message: "Unauthorized: Token missing or invalid this"
       });
       return;
     }
-
     const token = authHeader.split(" ")[1];
     if (!token) {
       res.status(401).json({
@@ -21,7 +24,7 @@ export const authenticateUser = (req: Request, res: Response, next: NextFunction
     }
 
     // Fallback to a default secret if process.env.JWT_SECRET is unset in test runs
-    const JWT_SECRET = process.env.JWT_SECRET || "test_secret_key_123";
+    const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
 
     const decoded = jwt.verify(token, JWT_SECRET) as unknown as { userId: string };
     if (!decoded || !decoded.userId) {
@@ -35,6 +38,7 @@ export const authenticateUser = (req: Request, res: Response, next: NextFunction
     next();
 
   } catch (error: any) {
+    console.log("Auth Middleware Error", error )
     if (!res.headersSent) {
       res.status(401).json({
         message: "Unauthorized: Invalid or expired token"
