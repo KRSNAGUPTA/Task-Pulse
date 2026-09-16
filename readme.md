@@ -20,6 +20,10 @@ Task Pulse follows a decoupled microservices approach managed within a single mo
 **Testing Stack:** Vitest + Supertest for unit and integration testing.
 
 ---
+## Architecture Diagram
+
+<img width="735" height="411" alt="Task Pulse" src="https://github.com/user-attachments/assets/dde1d74c-d7fb-4508-8247-6a3dead09278" />
+
 
 ## Project Structure
 
