@@ -23,7 +23,7 @@ export default {
 			targetBaseUrl = env.AUTH_SERVICE_URL;
 		} else {
 			return new Response(JSON.stringify({
-				error: "Endpoint not found on Gateway"
+				error: "Task Pulse API Gateway is working! Please add the service prefix, rafer the Swagger/OpenAPI doc for more reference"
 			}), {
 				status: 404,
 				headers: { 'Content-Type': "application/json" }
@@ -54,7 +54,7 @@ export default {
 		} catch (err: any) {
 			console.error("API Gateway Error", err.message || err);
 			return new Response(
-				JSON.stringify({ error: 'Task Pulse API Gateway is working! Please add the service prefix or rafer the Swagger/OpenAPI doc for more ref', details: err.message }),
+				JSON.stringify({ error: 'Gateway Proxy Failure', details: err.message }),
 				{ status: 502, headers: { 'Content-Type': 'application/json' } }
 			);
 		}
