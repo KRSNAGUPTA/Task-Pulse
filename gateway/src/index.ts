@@ -54,7 +54,7 @@ export default {
 		} catch (err: any) {
 			console.error("API Gateway Error", err.message || err);
 			return new Response(
-				JSON.stringify({ error: 'Gateway Proxy Failure', details: err.message }),
+				JSON.stringify({ error: 'Task Pulse API Gateway is working! Please add the service prefix or rafer the Swagger/OpenAPI doc for more ref', details: err.message }),
 				{ status: 502, headers: { 'Content-Type': 'application/json' } }
 			);
 		}

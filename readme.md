@@ -32,6 +32,7 @@ Task-Pulse/
 ├── .github/workflows/          # CI/CD pipelines (GitHub Actions)
 ├── apps/
 │   └── web-frontend/           # Next.js client application
+├── gateway                     # API Gateway: Cloudflare Worker
 ├── services/
 │   ├── auth-service/           # PostgreSQL + Prisma Auth microservice
 │   ├── task-service/           # MongoDB + Mongoose Task microservice
@@ -93,4 +94,4 @@ Task Pulse is designed for an independent **Dockerized cloud deployment** model 
 | Component | Status |
 |-----------|--------|
 | **Core Auth Service** | Completed & Verified (Prisma 7, PostgreSQL, JWT, Vitest/Supertest suites passing) |
-| **Task Service & Kong Gateway** | Active development / integration phase |
+| **Task Service & Cloudflare worker as Gateway** | Active development / integration phase |
