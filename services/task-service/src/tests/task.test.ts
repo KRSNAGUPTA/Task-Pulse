@@ -1,21 +1,52 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import jwt from 'jsonwebtoken';
+import type { Request, Response, NextFunction } from 'express';
+
+
+// 1. Assign process.env directly inside vi.hoisted
+vi.hoisted(() => {
+  (process.env as Record<string, string>).JWKS_URI = 'http://mock.com';
+});
+
+// 1. Mock the auth middleware module BEFORE importing app
+vi.mock('../middlewares/auth.middleware.ts', () => ({
+  authenticateUser: (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ message: 'Unauthorized: Token missing or invalid' });
+      return;
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    // Map test tokens to mock user payloads
+    if (token === 'user_a_token') {
+      req.user = { userId: 'user_A_123', email: 'usera@example.com' };
+      return next();
+    }
+
+    if (token === 'user_b_token') {
+      req.user = { userId: 'user_B_456', email: 'userb@example.com' };
+      return next();
+    }
+
+    res.status(401).json({ message: 'Unauthorized: Invalid or expired token' });
+  },
+}));
+
+// Import app AFTER vi.mock
 import app from '../app.js';
 import { Task, TaskStatus } from '../models/task.model.js';
-const JWT_SECRET = process.env.JWT_SECRET || 'test_secret_key_123';
-process.env.JWT_SECRET = JWT_SECRET;
+
 let mongoServer: MongoMemoryServer;
 
-// Helper to generate mock auth tokens
-const generateToken = (userId: string) => {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '1h' });
-};
-
-const userAToken = generateToken('user_A_123');
-const userBToken = generateToken('user_B_456');
+// Simple static test tokens matching the mock implementation above
+const userAToken = 'user_a_token';
+const userBToken = 'user_b_token';
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
@@ -35,37 +66,28 @@ beforeEach(async () => {
 describe('Task API Integration Tests', () => {
   describe('POST /api/task', () => {
     it('should return 401 if no Authorization header is provided', async () => {
-  const res = await request(app).post('/api/task').send({ title: 'Test Task' });
-  
-  
-  expect(res.status).toBe(401);
-});
-
-    it('should create a task successfully for an authenticated user', async () => {
-  const res = await request(app)
-    .post('/api/task')
-    .set('Authorization', `Bearer ${userAToken}`)
-    .send({
-      title: 'Test Task',
-      // metadata:{}
+      const res = await request(app).post('/api/task').send({ title: 'Test Task' });
+      expect(res.status).toBe(401);
     });
 
-  // console.log('VALIDATION ERRORS:', JSON.stringify(res.body, null, 2)); 
+    it('should create a task successfully for an authenticated user', async () => {
+      const res = await request(app)
+        .post('/api/task')
+        .set('Authorization', `Bearer ${userAToken}`)
+        .send({ title: 'Test Task' });
 
-  expect(res.status).toBe(201);
-});
+      expect(res.status).toBe(201);
+    });
   });
 
   describe('GET /api/task (Tenant Data Isolation)', () => {
     it('should only return tasks belonging to the requesting user', async () => {
-      // Seed task for User A
       await Task.create({
         userId: 'user_A_123',
         title: 'User A Task',
         status: TaskStatus.TO_DO,
       });
 
-      // Seed task for User B
       await Task.create({
         userId: 'user_B_456',
         title: 'User B Task',

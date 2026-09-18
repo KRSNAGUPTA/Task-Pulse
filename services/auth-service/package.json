@@ -5,7 +5,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "postinstall": "prisma generate",
-    "prisma:dev":"dotenv -e .env.local -- npx prisma migrate dev"
+    "prisma:dev": "dotenv -e .env.local -- npx prisma migrate dev",
+    "keys": "node src/utils/generate-keys.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
@@ -16,6 +17,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jose": "^6.2.12",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0"
   },

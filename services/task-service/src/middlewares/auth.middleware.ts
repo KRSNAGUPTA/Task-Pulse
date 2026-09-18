@@ -1,47 +1,65 @@
 import type { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { jwtVerify, createRemoteJWKSet, type JWTPayload } from "jose";
 
-export const authenticateUser = (req: Request, res: Response, next: NextFunction): void => {
-  // console.log("Middle log")
+const JWKS_URI = process.env.JWKS_URI;
+
+if(!JWKS_URI){
+  throw new Error("JWKS_URI is not set in environment")
+}
+
+// createRemoteJWKSet handles in-memory caching and automatic refetching on unknown 'kid'
+const JWKS = createRemoteJWKSet(new URL(JWKS_URI));
+
+interface CustomJwtPayload extends JWTPayload {
+  userId: string;
+  email: string;
+}
+
+export const authenticateUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
-
-    // console.log("In Auth Header")
     const authHeader = req.headers.authorization;
-    
-    console.log("Auth Header:", authHeader)
+    // console.log("Auth Header:", authHeader);
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       res.status(401).json({
-        message: "Unauthorized: Token missing or invalid this"
+        message: "Unauthorized: Token missing or invalid",
       });
       return;
     }
+
     const token = authHeader.split(" ")[1];
     if (!token) {
       res.status(401).json({
-        message: "Unauthorized: Malformed token"
+        message: "Unauthorized: Malformed token",
       });
       return;
     }
 
-    // Fallback to a default secret if process.env.JWT_SECRET is unset in test runs
-    const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
+    // Verify token asynchronously against JWKS
+    const { payload } = await jwtVerify<CustomJwtPayload>(token, JWKS);
 
-    const decoded = jwt.verify(token, JWT_SECRET) as unknown as { userId: string };
-    if (!decoded || !decoded.userId) {
+    if (!payload || !payload.userId) {
       res.status(401).json({
-        message: "Unauthorized: Invalid token payload"
+        message: "Unauthorized: Invalid token payload",
       });
       return;
     }
 
-    req.user = { userId: decoded.userId };
+    req.user = { userId: payload.userId, email: payload.email };
     next();
-
   } catch (error: any) {
-    console.log("Auth Middleware Error", error )
+    console.log('checking cause');
+    console.log("Auth Middleware Error:", error?.message || error);
+
+    
+    if(error?.cause) console.log('Error Cause:', error.cause)
     if (!res.headersSent) {
       res.status(401).json({
-        message: "Unauthorized: Invalid or expired token"
+        message: "Unauthorized: Invalid or expired token",
       });
     }
   }

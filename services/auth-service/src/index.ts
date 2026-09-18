@@ -3,12 +3,13 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import { prisma } from './utils/prisma.js';
 import authRoutes from "./routes/auth.routes.js"
+import jwksRoutes from "./routes/jwks.routes.js"
 import cookieParser from 'cookie-parser';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5003;
+const PORT = process.env.PORT || 5001;
 
 // 1. MUST BE BEFORE ROUTES
 app.use(cors());
@@ -50,6 +51,7 @@ app.post('/test-user', async (req, res) => {
 });
 
 app.use("/api/auth", authRoutes)
+app.use("/api/auth",jwksRoutes );
 
 app.listen(PORT, () => {
   console.log(`Auth Service listening on http://localhost:${PORT}`);

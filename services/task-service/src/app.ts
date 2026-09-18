@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import mongoSanitize from 'express-mongo-sanitize';
+import {rateLimit} from "express-rate-limit"
 import taskRoutes from './routes/task.route.js';
 import { authenticateUser } from './middlewares/auth.middleware.js';
 
@@ -15,6 +16,36 @@ app.use((req, _res, next) => {
   if (req.params) mongoSanitize.sanitize(req.params, { replaceWith: '_' });
   next();
 });
+// console.log(process.env.NODE_ENV  )
+
+// Rate Limit
+
+const limitter = rateLimit({
+  windowMs: 15 * 60 * 1000, //15 min
+  limit: 75, 
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  ipv6Subnet: 56
+})
+
+
+app.use(limitter)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Health Check
 app.get('/', (_req, res) => {
