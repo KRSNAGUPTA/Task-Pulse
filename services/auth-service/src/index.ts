@@ -51,7 +51,7 @@ app.post('/test-user', async (req, res) => {
 });
 
 app.use("/api/auth", authRoutes)
-app.use("/api/auth",jwksRoutes );
+app.use("/",jwksRoutes );
 
 app.listen(PORT, () => {
   console.log(`Auth Service listening on http://localhost:${PORT}`);
