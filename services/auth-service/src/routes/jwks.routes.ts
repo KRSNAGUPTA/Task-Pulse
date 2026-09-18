@@ -25,7 +25,7 @@ async function getJwks() {
     keys: [
       {
         ...jwk,
-        kid: 'task-pulse-key-1', 
+        kid: 'task-pulse-key-1',
         use: 'sig',
         alg: 'RS256',
       },
@@ -39,13 +39,20 @@ async function getJwks() {
 
 
 const router = Router();
-router.get("/.well-known/jwks.json", async (req: Request, res:Response)=>{
-    try {
-        const jwks = await getJwks();
-        res.setHeader('Cache-Control', 'public, max-age=3600')
-        return res.json(jwks);
-    } catch (error) {
-        
-    }
+router.get("/.well-known/jwks.json", async (req: Request, res: Response) => {
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  try {
+    const jwks = await getJwks();
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.setHeader("Content-Type", "application/json")
+    return res.json(jwks);
+  } catch (error) {
+
+  }
 })
 export default router;
