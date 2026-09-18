@@ -30,6 +30,14 @@ export default {
 			})
 		}
 
+		if(!targetBaseUrl){
+			return new Response(
+				JSON.stringify({
+					"message":"Base URL is not configured!"
+				})
+			)
+		}
+
 		const targetUrl = `${targetBaseUrl}${pathName}${url.search}`
 
 		const proxyReq = new Request(targetUrl, {
