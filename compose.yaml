@@ -29,6 +29,7 @@ services:
     build:
       context: services/task-service
       dockerfile: Dockerfile
+      target: dev
     env_file:
       - ./services/task-service/.env
     container_name: task-service
@@ -36,18 +37,40 @@ services:
       - "5002:5002"
     depends_on:
       - mongodb
-    
+    develop:
+      watch:
+        # Sync source files instantly without rebuilding
+        - action: sync
+          path: ./services/task-service/src
+          target: /app/src
+        # Rebuild container automatically when dependencies change
+        - action: rebuild
+          path: ./services/task-service/package.json
+
   auth-service:
     build:
       context: services/auth-service
       dockerfile: Dockerfile
+      target: dev
     env_file:
       - ./services/auth-service/.env
     container_name: auth-service
     ports:
-      - "5003:5003"
+      - "5001:5001"
     depends_on:
       - postgres
+    develop:
+      watch:
+        # Sync source files instantly without rebuilding
+        - action: sync
+          path: ./services/auth-service/src
+          target: /app/src
+        # Rebuild container automatically when dependencies or database schema change
+        - action: rebuild
+          path: ./services/auth-service/package.json
+        - action: rebuild
+          path: ./services/auth-service/prisma
+
 volumes:
   pgdata:
   mongo-data:
