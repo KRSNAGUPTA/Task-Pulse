@@ -28,8 +28,6 @@ jobs:
 
       - name: Run Vitest Integration test
         run: npm run test
-        env:
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
   deploy:
     needs: test
