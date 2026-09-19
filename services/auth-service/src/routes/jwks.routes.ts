@@ -1,58 +1,69 @@
-import { Request, Response, Router } from "express";
-import * as jose from 'jose'
+import { NextFunction, Request, Response, Router } from "express";
+import { createPublicKey } from "node:crypto";
 
+const KEY_ID = process.env.JWT_KEY_ID || "task-pulse-key-1";
+const JWKS_PATH = "/.well-known/jwks.json";
 
+type Jwks = { keys: object[] };
 
-let jwksCache: { keys: object[] } | null = null;
+let jwksPromise: Promise<Jwks> | null = null;
 
-
-async function getJwks() {
-  if (jwksCache) return jwksCache;
-
-  const publicKeyPem = (process.env.JWT_PUBLIC_KEY || '').replace(/\\n/g, '\n');
-
-  if (!publicKeyPem) {
-    throw new Error('JWT_PUBLIC_KEY is not defined in environment variables.');
+function buildJwks(): Jwks {
+  const pem = (process.env.JWT_PUBLIC_KEY || "").replace(/\\n/g, "\n").trim();
+  if (!pem) {
+    throw new Error("JWT_PUBLIC_KEY is not defined in environment variables.");
   }
 
-  // Import the SPKI PEM public key
-  const publicKey = await jose.importSPKI(publicKeyPem, 'RS256');
+  const jwk = createPublicKey(pem).export({ format: "jwk" });
 
-  // Export as a public JSON Web Key (JWK)
-  const jwk = await jose.exportJWK(publicKey);
-
-  jwksCache = {
-    keys: [
-      {
-        ...jwk,
-        kid: 'task-pulse-key-1',
-        use: 'sig',
-        alg: 'RS256',
-      },
-    ],
+  return {
+    keys: [{ ...jwk, kid: KEY_ID, use: "sig", alg: "RS256" }],
   };
-
-  return jwksCache;
-
 }
 
+function getJwks(): Promise<Jwks> {
+  if (!jwksPromise) {
+    jwksPromise = Promise.resolve()
+      .then(buildJwks)
+      .catch((err) => {
+        jwksPromise = null;
+        throw err;
+      });
+  }
+  return jwksPromise;
+}
 
+function corsHeaders(req: Request, res: Response, next: NextFunction) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    req.header("Access-Control-Request-Headers") || "Content-Type, Authorization"
+  );
+  res.setHeader("Access-Control-Max-Age", "86400");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+}
 
 const router = Router();
-router.get("/.well-known/jwks.json", async (req: Request, res: Response) => {
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+router.use(JWKS_PATH, corsHeaders);
+
+router.options(JWKS_PATH, (_req: Request, res: Response) => {
+  res.status(204).end();
+});
+
+router.get(JWKS_PATH, async (_req: Request, res: Response) => {
   try {
     const jwks = await getJwks();
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader('Cache-Control', 'public, max-age=3600')
-    res.setHeader("Content-Type", "application/json")
-    return res.json(jwks);
-  } catch (error) {
-
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.type("application/json").json(jwks);
+  } catch (error: any) {
+    console.error("Failed to serve JWKS:", error?.message || error);
+    res.setHeader("Cache-Control", "no-store");
+    res.status(500).json({ error: "Internal Server Error" });
   }
-})
+});
+
+
 export default router;
