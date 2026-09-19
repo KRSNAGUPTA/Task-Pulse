@@ -1,41 +1,1140 @@
-swagger: '2.0'
-info:
-  title: Task Pulse API Gateway
-  description: API Gateway routing to microservices
-  version: 1.0.0
-schemes:
-  - https
-produces:
-  - application/json
-paths:
-  /api/auth/{path}:
-    get:
-      summary: Proxy GET requests to Auth Service
-      operationId: proxyAuthGet
-      parameters:
-        - name: path
-          in: path
-          required: true
-          type: string
-          description: Sub-path for auth service
-      x-google-backend:
-        address: https://task-pulse-u8t2.onrender.com/api/auth/{path}
-        deadline: 30.0
-      responses:
-        '200':
-          description: A successful response
-    post:
-      summary: Proxy POST requests to Auth Service
-      operationId: proxyAuthPost
-      parameters:
-        - name: path
-          in: path
-          required: true
-          type: string
-          description: Sub-path for auth service
-      x-google-backend:
-        address: https://task-pulse-u8t2.onrender.com/api/auth/{path}
-        deadline: 30.0
-      responses:
-        '200':
-          description: A successful response
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Task Pulse API",
+    "description": "Task Pulse is a microservices monorepo for task management.\n\n| Service | Stack | Local port | Notes |\n|---|---|---|---|\n| Auth service | Express, Prisma 7, PostgreSQL | `5001` | Registration, login, JWT (RS256), JWKS |\n| Task service | Express, Mongoose, MongoDB | `5002` | Task CRUD, verifies JWTs against the auth service JWKS |\n| Gateway | Cloudflare Worker | `8787` (`wrangler dev`) | Proxies `/api/auth/*`, `/api/task/*` and `/.well-known/*`; |\n| Notification service | Express, Nodemailer | - | In development, no HTTP API documented here |\n\nThe task service also serves a health check at `GET /` on its own port (`{\"message\":\"Task Service API!\"}`).\n\n## Running locally\n\n1. Clone: `git clone https://github.com/KRSNAGUPTA/Task-Pulse.git && cd Task-Pulse`\n2. Root `.env` (used by Docker Compose): copy `.env.example` and set `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `MONGO_USERNAME`, `MONGO_PASSWORD`.\n3. Generate an RSA key pair: `cd services/auth-service && npm install && npm run keys`. Put the two PEM blocks in `JWT_PUBLIC_KEY` and `JWT_PRIVATE_KEY`, with newlines written as literal `\\n` if the value is on one line.\n4. `services/auth-service/.env`: `DATABASE_URL=postgresql://<user>:<password>@postgres:5432/<db>`, `JWT_PUBLIC_KEY`, `JWT_PRIVATE_KEY`, optional `JWT_KEY_ID` (default `task-pulse-key-1`; tokens are always signed with this kid).\n5. `services/task-service/.env`: `MONGO_URI=mongodb://<user>:<password>@mongodb:27017/taskpulse?authSource=admin`, `PORT=5002`, `JWKS_URI=http://auth-service:5001/.well-known/jwks.json`. The JWKS route is mounted at the auth service root, not under `/api/auth`.\n6. Start everything: `docker compose watch`.\n7. Apply DB migrations (the dev image does not run them automatically): `docker compose exec auth-service npx prisma migrate deploy`. The production image runs `prisma migrate deploy` on startup.\n8. Run tests in each service with `npm test` (Vitest + Supertest).\n\nGateway (Cloudflare Worker): set `AUTH_SERVICE_URL` (for example `https://task-pulse-u8t2.onrender.com`) and `TASK_SERVICE_URL` in `gateway/dev.vars.local` for local dev, or as Worker secrets/variables in production (`npx wrangler secret put TASK_SERVICE_URL`), then run `npx wrangler dev` / `npx wrangler deploy` from `gateway/`.\n\n## Authentication flow\n\n1. `POST /api/auth/register` or `POST /api/auth/login` returns a short-lived (15 minutes) `accessToken` in the JSON body and sets an HTTP-only `RefreshToken` cookie (7 days, `Path=/api/auth/refresh`).\n2. Send the access token on protected endpoints as `Authorization: Bearer <accessToken>`.\n3. When it expires, call `POST /api/auth/refresh` with the cookie (browsers: `credentials: 'include'`) to get a new access token.\n4. Tokens are RS256 JWTs with header `kid: task-pulse-key-1` and payload `{ userId, email, iat, exp }`. Other services verify them with the public key from `GET /.well-known/jwks.json`.\n\n## Using these docs (Swagger UI)\n\nThe docs page is served by the gateway itself, so it is same-origin with the API. It handles the access token for you:\n\n- Call `POST /api/auth/login`, `register` or `refresh` from \"Try it out\" and paste access token in Authorize \n- Before any protected request, if there is no token or it expires within 30 seconds, the page calls `POST /api/auth/refresh` using the `RefreshToken` cookie and retries with the new token.\n- On page load it tries a silent refresh, so after one login you stay authorized for the 7-day cookie lifetime.\n- `POST /api/auth/logout` clears the token.\n\n## Conventions\n\n- Errors are JSON. Auth service errors use `{ \"message\": \"...\" }`. The task service uses the same shape, and validation errors add an `errors` object.\n- The task service rate-limits to 75 requests per 15 minutes per client and answers `429` beyond that.\n- Task endpoints only ever see the caller's own tasks, scoped by the `userId` in the token.\n- Documented behavior reflects the current code, including quirks noted on individual operations.\n",
+    "version": "1.0.0",
+    "license": {
+      "name": "See repository",
+      "url": "https://github.com/KRSNAGUPTA/Task-Pulse"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://taskpulse-gateway.krxna-dev.workers.dev",
+      "description": "Gateway (Cloudflare Worker): /api/auth/*, /api/task/*, /.well-known/*"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth",
+      "description": "Registration, login and token refresh (auth service)"
+    },
+    {
+      "name": "JWKS",
+      "description": "Public signing keys for token verification (auth service)"
+    },
+    {
+      "name": "Tasks",
+      "description": "Task CRUD (task service)"
+    }
+  ],
+  "paths": {
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Register a new user",
+        "operationId": "register",
+        "description": "Email and password are trimmed. Password must be at least 8 characters after trimming. Email uniqueness is exact-match (case-sensitive). Issues an access token and sets the refresh cookie.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User created",
+            "headers": {
+              "Set-Cookie": {
+                "description": "`RefreshToken` JWT, 7 days. HttpOnly, SameSite=Lax, Secure in production, Path=/api/auth/refresh.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing email/password or password shorter than 8 characters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Password should be at least 8 characters"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email already registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "User already exists, try logging in"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal server error during registration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Log in with email and password",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated",
+            "headers": {
+              "Set-Cookie": {
+                "description": "`RefreshToken` JWT, 7 days. HttpOnly, SameSite=Lax, Secure in production, Path=/api/auth/refresh.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing email or password",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Email and Password required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong email or password",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Invalid email or password"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal server error during login"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Log out (clears the refresh cookie)",
+        "operationId": "logout",
+        "description": "Only clears the `RefreshToken` cookie. Issued access tokens stay valid until they expire (15 minutes); there is no server-side revocation.",
+        "responses": {
+          "200": {
+            "description": "Cookie cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                },
+                "example": {
+                  "message": "User logout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal Server Error at logout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Get a new access token using the refresh cookie",
+        "operationId": "refresh",
+      "description": "Reads the `RefreshToken` HTTP-only cookie set by login/register. Browsers send it automatically (cross-origin callers need `credentials: 'include'`),\n\n `so there is nothing to fill in here.` 
+      \n\n In Swagger UI just click Execute. Note: an invalid or expired refresh token currently returns **500** (not 401) because verification errors are not handled separately. The refresh token itself is not rotated.",
+        "parameters": [
+          {
+            "name": "RefreshToken",
+            "in": "cookie",
+          
+            "schema": {
+              "type": "string"
+            },
+            "description": "Refresh JWT set by login/register"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refresh cookie missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Refresh token missing"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Invalid/expired refresh token or internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal server error during token refresh"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/jwks.json": {
+      "get": {
+        "tags": [
+          "JWKS"
+        ],
+        "summary": "JSON Web Key Set for verifying access tokens",
+        "operationId": "jwks",
+        "description": "Public RS256 key built from `JWT_PUBLIC_KEY`. Served with `Access-Control-Allow-Origin: *`, `Cross-Origin-Resource-Policy: cross-origin` and `Cache-Control: public, max-age=3600`. The path has no `/api` prefix; the gateway forwards everything under `/.well-known/` to the auth service. A preflight `OPTIONS` request returns 204.",
+        "responses": {
+          "200": {
+            "description": "JWKS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jwks"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`JWT_PUBLIC_KEY` missing or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Create a task",
+        "operationId": "createTask",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "List the caller's tasks",
+        "operationId": "listTasks",
+        "description": "Returns every task owned by the caller. No pagination, filtering or sorting is implemented yet.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tasks fetched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "All tasks fetched"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Task"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/{taskId}": {
+      "parameters": [
+        {
+          "name": "taskId",
+          "in": "path",
+          "required": true,
+          "description": "MongoDB ObjectId of the task (24 hex characters). A malformed id currently results in a 500.",
+          "schema": {
+            "type": "string",
+            "example": "66f1c2a9e4b0a1b2c3d4e5f6"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Get one task",
+        "operationId": "getTask",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Fetched the task"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or owned by someone else)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Task not found"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Update a task",
+        "operationId": "updateTask",
+        "description": "Uses the create schema with all fields optional. **Caveat:** Zod 4 still applies the create-schema defaults to omitted fields, so a PATCH that sends only `title` also resets `status` to `TO_DO`, `priority` to `MEDIUM`, `description` to `''`, `dueDate` to `null`, and `tags`, `subtasks` and `metadata` to empty values. Send the complete set of fields you want to keep.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Task updated"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or owned by someone else)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Task not found or unauthorized"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Delete a task",
+        "operationId": "deleteTask",
+        "description": "Hard delete.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                },
+                "example": {
+                  "message": "Task deleted successfully"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or owned by someone else)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Task not found or unauthorized"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "RS256 access token from /api/auth/login or /api/auth/register (15 min). Verified by the task service against the auth service JWKS."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing, malformed, invalid or expired bearer token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "message": "Unauthorized: Token missing or invalid"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Rate limit exceeded (75 requests per 15 minutes). Body is plain text from express-rate-limit.",
+        "content": {
+          "text/plain": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ValidationFailed": {
+        "description": "Request body failed Zod validation",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ValidationError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Validation failed"
+          },
+          "errors": {
+            "type": "object",
+            "description": "Output of Zod `flattenError`",
+            "properties": {
+              "formErrors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "fieldErrors": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "message": "Validation failed",
+          "errors": {
+            "formErrors": [],
+            "fieldErrors": {
+              "title": [
+                "Title cannot be empty"
+              ]
+            }
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true,
+            "example": "Krishna Gupta"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "krishna@example.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8,
+            "example": "s3cretpass"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "krishna@example.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "s3cretpass"
+          }
+        }
+      },
+      "AccessToken": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "RS256 JWT, 15 minutes"
+          }
+        }
+      },
+      "PublicUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/PublicUser"
+          },
+          "token": {
+            "$ref": "#/components/schemas/AccessToken"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              }
+            }
+          },
+          "token": {
+            "$ref": "#/components/schemas/AccessToken"
+          }
+        }
+      },
+      "RefreshResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "$ref": "#/components/schemas/AccessToken"
+          }
+        }
+      },
+      "Jwks": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kty": {
+                  "type": "string",
+                  "example": "RSA"
+                },
+                "n": {
+                  "type": "string",
+                  "description": "Modulus (base64url)"
+                },
+                "e": {
+                  "type": "string",
+                  "example": "AQAB"
+                },
+                "kid": {
+                  "type": "string",
+                  "example": "task-pulse-key-1"
+                },
+                "use": {
+                  "type": "string",
+                  "example": "sig"
+                },
+                "alg": {
+                  "type": "string",
+                  "example": "RS256"
+                }
+              }
+            }
+          }
+        }
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "TO_DO",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "ARCHIVED"
+        ],
+        "default": "TO_DO"
+      },
+      "TaskPriority": {
+        "type": "string",
+        "enum": [
+          "Low",
+          "MEDIUM",
+          "HIGH",
+          "URGENT"
+        ],
+        "default": "MEDIUM",
+        "description": "Note the inconsistent casing: the low value is `Low`, the others are upper case. This mirrors the current enum in the task model."
+      },
+      "Subtask": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "isCompleted": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "SubtaskStored": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Subtask"
+          }
+        ],
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateTaskRequest": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Write launch post"
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "default": null,
+            "description": "Coerced to a Date; any string `new Date()` understands is accepted"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "subtasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subtask"
+            },
+            "default": []
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "default": {}
+          }
+        },
+        "example": {
+          "title": "Write launch post",
+          "priority": "HIGH",
+          "dueDate": "2026-10-01T09:00:00.000Z",
+          "tags": [
+            "marketing"
+          ],
+          "subtasks": [
+            {
+              "title": "Outline"
+            }
+          ]
+        }
+      },
+      "UpdateTaskRequest": {
+        "type": "object",
+        "description": "Same fields as CreateTaskRequest, all optional. See the PATCH operation for the defaults caveat.",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "subtasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subtask"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "66f1c2a9e4b0a1b2c3d4e5f6"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Owner (from the token)"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subtasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtaskStored"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "__v": {
+            "type": "integer"
+          }
+        }
+      },
+      "TaskEnvelope": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Task Created"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Task"
+          }
+        }
+      }
+    }
+  }
+}
