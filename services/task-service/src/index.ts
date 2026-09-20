@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import app from './app.js';
+import { redisClient } from './config/redis.config.js';
 
 dotenv.config();
 
@@ -11,6 +12,8 @@ const startServer = async () => {
   try {
     const connection = await mongoose.connect(MONGO_URI);
     console.log(`MongoDB Connected to ${connection.connection.host}`);
+
+    redisClient();
 
     app.listen(PORT, () => {
       console.log(`Task Service running on ${PORT}`);
