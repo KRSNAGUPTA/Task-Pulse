@@ -38,6 +38,16 @@ vi.mock('../middlewares/auth.middleware.ts', () => ({
   },
 }));
 
+vi.mock("../utility/redisUtility.ts", () => ({
+
+  redisUtil: {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
+    del: vi.fn().mockResolvedValue(undefined)
+  }
+
+}))
+
 // Import app AFTER vi.mock
 import app from '../app.js';
 import { Task, TaskStatus } from '../models/task.model.js';
@@ -76,6 +86,8 @@ describe('Task API Integration Tests', () => {
         .set('Authorization', `Bearer ${userAToken}`)
         .send({ title: 'Test Task' });
 
+      // console.log("Task created", res);
+
       expect(res.status).toBe(201);
     });
   });
@@ -98,6 +110,7 @@ describe('Task API Integration Tests', () => {
         .get('/api/task')
         .set('Authorization', `Bearer ${userAToken}`);
 
+      console.log(res);
       expect(res.status).toBe(200);
       expect(res.body.data.length).toBe(1);
       expect(res.body.data[0].title).toBe('User A Task');
