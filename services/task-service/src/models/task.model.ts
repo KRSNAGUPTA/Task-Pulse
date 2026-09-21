@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, model } from "mongoose";
 export enum TaskPriority {
-    LOW = 'Low',
+    LOW = 'LOW',
     MEDIUM = 'MEDIUM',
     HIGH = 'HIGH',
     URGENT = 'URGENT'
@@ -96,6 +96,6 @@ const TaskSchema = new Schema<ITaskDocument>(
         timestamps:true
     }
 )
-TaskSchema.index({ userId:1, title:1, status:1}) // to make query faster by including prefix(left most variable) in the query 
+TaskSchema.index({ userId:1, dueDate:1, title:1, status:1}) // to make query faster by including prefix(left most variable) in the query 
 
 export const Task = model<ITaskDocument>('Task', TaskSchema)

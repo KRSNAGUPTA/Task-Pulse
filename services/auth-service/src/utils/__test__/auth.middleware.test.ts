@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import express from 'express';
-import request from 'supertest';
-import { authenticateUser } from '../../middlewares/auth.middleware';
-import * as jwtUtils from '../../utils/jwt'; 
+import express from "express";
+import request from "supertest";
+import { authenticateUser } from "../../middlewares/auth.middleware";
+import * as jwtUtils from "../../utils/jwt";
+
 const app = express();
+const mockPayload = {
+    userId: "123",
+    email: "user@test.com",
+    orgId: "org-1",
+    role: "OWNER" as const,
+};
 app.get("/api/protected-route", authenticateUser, (req, res) => {
-    res.status(200).json({ 
+    res.status(200).json({
         message: "Protected route accessed",
-        user: req.user 
+        user: mockPayload,
     });
 });
 
@@ -31,7 +38,6 @@ describe("Auth Middleware", () => {
     });
 
     it("should return 401 when token is invalid", async () => {
-        // Mock verifyToken throwing an error to trigger 401 in middleware
         vi.spyOn(jwtUtils, "verifyToken").mockImplementationOnce(() => {
             throw new Error("Invalid token");
         });
@@ -44,11 +50,30 @@ describe("Auth Middleware", () => {
         expect(res.body.message).toBe("Unauthorized");
     });
 
-    it("should call next() and allow access when token is valid", async () => {
-        const mockPayload = { userId: "123", email: "user@test.com" };
+    it("should return 401 when a refresh token is used as an access token", async () => {
+        vi.spyOn(jwtUtils, "verifyToken").mockReturnValueOnce({
+            userId: "123",
+            email: "user@test.com",
+            orgId: "org-1",
+            role: "OWNER",
+            type: "refresh",
+        });
 
-        // Spy on verifyToken and return valid payload for this specific test
-        vi.spyOn(jwtUtils, "verifyToken").mockReturnValueOnce(mockPayload as any);
+        const res = await request(app)
+            .get("/api/protected-route")
+            .set("Authorization", "Bearer RefreshToken");
+
+        expect(res.status).toBe(401);
+        expect(res.body.message).toBe("Unauthorized");
+    });
+
+    it("should call next() and expose user with org and role for a valid access token", async () => {
+
+
+        vi.spyOn(jwtUtils, "verifyToken").mockReturnValueOnce({
+            ...mockPayload,
+            type: "access",
+        });
 
         const res = await request(app)
             .get("/api/protected-route")

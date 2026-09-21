@@ -40,27 +40,42 @@ txhpDNkU+qOpvTFoNULA3/+D
 -----END PRIVATE KEY-----`
 
 
-const JWT_PRIVATE_KEY = (process.env.JWT_PRIVATE_KEY || dummyPrivateKey).replace(/\\n/g, '\n');
-const JWT_PUBLIC_KEY = (process.env.JWT_PUBLIC_KEY || dummyPublicKey).replace(/\\n/g, '\n');
+const isProd = process.env.NODE_ENV === "production";
+
+function loadKey(value: string | undefined, fallback: string, name: string): string {
+  if (!value) {
+    if (isProd) throw new Error(`${name} must be set in production`);
+    return fallback.replace(/\\n/g, "\n");
+  }
+  return value.replace(/\\n/g, "\n");
+}
+
+const JWT_PRIVATE_KEY = loadKey(process.env.JWT_PRIVATE_KEY, dummyPrivateKey, "JWT_PRIVATE_KEY");
+const JWT_PUBLIC_KEY = loadKey(process.env.JWT_PUBLIC_KEY, dummyPublicKey, "JWT_PUBLIC_KEY");
+
+export type Role = "OWNER" | "ADMIN" | "MEMBER";
 
 export interface PayLoad {
   userId: string;
   email: string;
+  orgId: string;
+  role: Role;
+  type?: "access" | "refresh";
 }
 
 export function generateToken(
   payload: PayLoad,
-  expiresIn: SignOptions['expiresIn'] = '1d'
+  expiresIn: SignOptions["expiresIn"] = "1d"
 ): string {
   return jwt.sign(payload, JWT_PRIVATE_KEY, {
-    algorithm: 'RS256',
-    keyid: 'task-pulse-key-1', 
+    algorithm: "RS256",
+    keyid: process.env.JWT_KEY_ID || "task-pulse-key-1",
     expiresIn,
   });
 }
 
 export function verifyToken(token: string): PayLoad {
   return jwt.verify(token, JWT_PUBLIC_KEY, {
-    algorithms: ['RS256'],
+    algorithms: ["RS256"],
   }) as PayLoad;
 }
