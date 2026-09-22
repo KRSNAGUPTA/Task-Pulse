@@ -3,64 +3,74 @@ import { jwtVerify, createRemoteJWKSet, type JWTPayload } from "jose";
 
 const JWKS_URI = process.env.JWKS_URI;
 
-if(!JWKS_URI){
-  throw new Error("JWKS_URI is not set in environment")
+if (!JWKS_URI) {
+  throw new Error("JWKS_URI is not set in environment");
 }
 
-// createRemoteJWKSet handles in-memory caching and automatic refetching on unknown 'kid'
+// Caches keys in memory 
 const JWKS = createRemoteJWKSet(new URL(JWKS_URI));
 
-interface CustomJwtPayload extends JWTPayload {
-  userId: string;
-  email: string;
+interface AccessTokenPayload extends JWTPayload {
+  userId?: string;
+  email?: string;
+  orgId?: string;
+  role?: string;
+  type?: string;
 }
+
+const ROLES = new Set(["OWNER", "ADMIN", "MEMBER"]);
 
 export const authenticateUser = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ message: "Unauthorized: Token missing or invalid" });
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    res.status(401).json({ message: "Unauthorized: Malformed token" });
+    return;
+  }
+
   try {
-    const authHeader = req.headers.authorization;
-    // console.log("Auth Header:", authHeader);
+    const { payload } = await jwtVerify<AccessTokenPayload>(token, JWKS, {
+      algorithms: ["RS256"]
+    });
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({
-        message: "Unauthorized: Token missing or invalid",
-      });
+    if (
+      payload.type !== "access" ||
+      !payload.userId ||
+      !payload.orgId ||
+      !payload.role ||
+      !ROLES.has(payload.role)
+    ) {
+      res.status(401).json({ message: "Unauthorized: Invalid token payload" });
       return;
     }
 
-    const token = authHeader.split(" ")[1];
-    if (!token) {
-      res.status(401).json({
-        message: "Unauthorized: Malformed token",
-      });
-      return;
-    }
-
-    // Verify token asynchronously against JWKS
-    const { payload } = await jwtVerify<CustomJwtPayload>(token, JWKS);
-
-    if (!payload || !payload.userId) {
-      res.status(401).json({
-        message: "Unauthorized: Invalid token payload",
-      });
-      return;
-    }
-
-    req.user = { userId: payload.userId, email: payload.email };
+    req.user = {
+      userId: payload.userId,
+      orgId: payload.orgId,
+      role: payload.role as "OWNER" | "ADMIN" | "MEMBER",
+      ...(payload.email ? { email: payload.email } : {}),
+    };
     next();
   } catch (error: any) {
-    console.log('checking cause');
-    console.log("Auth Middleware Error:", error?.message || error);
+    const code: string = error?.code ?? "";
+    const invalidToken =
+      code.startsWith("ERR_JWT") || code.startsWith("ERR_JWS") || code === "ERR_JWKS_NO_MATCHING_KEY";
 
-    
-    if(error?.cause) console.log('Error Cause:', error.cause)
-    if (!res.headersSent) {
-      res.status(401).json({
-        message: "Unauthorized: Invalid or expired token",
-      });
+    if (invalidToken) {
+      res.status(401).json({ message: "Unauthorized: Invalid or expired token" });
+      return;
     }
+
+    console.error("JWKS verification failed:", error?.message || error);
+    res.status(503).json({ message: "Auth service unavailable, try again shortly" });
   }
 };

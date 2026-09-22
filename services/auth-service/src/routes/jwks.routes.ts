@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response, Router } from "express";
 import { createPublicKey } from "node:crypto";
+import { PUBLIC_KEY_PEM } from "../utils/jwt.js";
 
 const KEY_ID = process.env.JWT_KEY_ID || "task-pulse-key-1";
 const JWKS_PATH = "/.well-known/jwks.json";
@@ -9,12 +10,9 @@ type Jwks = { keys: object[] };
 let jwksPromise: Promise<Jwks> | null = null;
 
 function buildJwks(): Jwks {
-  const pem = (process.env.JWT_PUBLIC_KEY || "").replace(/\\n/g, "\n").trim();
-  if (!pem) {
-    throw new Error("JWT_PUBLIC_KEY is not defined in environment variables.");
-  }
-
-  const jwk = createPublicKey(pem).export({ format: "jwk" });
+  // Same key jwt.ts signs with (dev fallback included), so a token this service
+  // issues always verifies against what this endpoint publishes.
+  const jwk = createPublicKey(PUBLIC_KEY_PEM).export({ format: "jwk" });
 
   return {
     keys: [{ ...jwk, kid: KEY_ID, use: "sig", alg: "RS256" }],

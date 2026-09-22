@@ -74,6 +74,9 @@ export function generateToken(
   });
 }
 
+// Exporting, so same fallback key is used in JWKS
+export const PUBLIC_KEY_PEM = JWT_PUBLIC_KEY;
+
 export function verifyToken(token: string): PayLoad {
   return jwt.verify(token, JWT_PUBLIC_KEY, {
     algorithms: ["RS256"],
