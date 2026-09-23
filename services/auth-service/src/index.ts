@@ -11,7 +11,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));  
 app.use(cookieParser());
