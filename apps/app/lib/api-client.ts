@@ -1,47 +1,61 @@
 import axios from "axios";
 import { useAuthStore } from "../store/useAuthStore";
 
-const baseUrl = process.env.API_GATEWAY;
-if (!baseUrl) {
-    console.error("API Gateway not configured")
+const baseUrl = process.env.NEXT_PUBLIC_GATEWAY_URL;
+
+if (!process.env.NEXT_PUBLIC_GATEWAY_URL) {
+  console.error("API Gateway not configured");
 }
 
-const apiClient = axios.create({
-    baseURL: baseUrl,
-    withCredentials: true
-})
+export const apiClient = axios.create({
+  baseURL: baseUrl,
+  withCredentials: true,
+});
 
 apiClient.interceptors.request.use((config) => {
-    const accessToken = useAuthStore.getState().accessToken;
-    if (accessToken) {
-        config.headers.Authorization = `Bearer ${accessToken}`
-    }
-    return config;
-})
+  const accessToken = useAuthStore.getState().accessToken;
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return config;
+});
 
-apiClient.interceptors.response.use((res) => res, async (error) => {
+apiClient.interceptors.response.use(
+  (res) => res,
+  async (error) => {
     const originalReq = error.config;
-    if (error.response.status === 401 && !originalReq._retry && !originalReq.url?.includes("/api/auth/refresh") && !originalReq.url?.includes("/api/auth/login")) {
-        originalReq._retry = true;
 
+    if (
+      error.response?.status === 401 &&
+      !originalReq._retry &&
+      !originalReq.url?.includes("/api/auth/refresh") &&
+      !originalReq.url?.includes("/api/auth/login")
+    ) {
+      originalReq._retry = true;
 
-        try {
-            const { data } = await axios.post(`baseUrl`, {}, {
-                withCredentials: true
-            })
+      try { 
+        const { data } = await axios.post(
+          `${baseUrl}/api/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
 
-            const { token } = data;
+        const { token } = data;
+        const newAccessToken = token?.accessToken;
 
-            useAuthStore.getState().setAccessToken(token?.accessToken);
-            originalReq.headers.Authorization = `Bearer ${token?.accessToken}`;
-            return apiClient(originalReq);
+        useAuthStore.getState().setAccessToken(newAccessToken);
+        originalReq.headers.Authorization = `Bearer ${newAccessToken}`;
 
-        } catch (error: any) {
-            useAuthStore.getState().logout();
-            if(typeof window != 'undefined'){
-                window.location.href = "/login"
-            }
-            return Promise.reject(error);
+        return apiClient(originalReq);
+      } catch (refreshError: any) {
+        useAuthStore.getState().logout();
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
         }
+        return Promise.reject(refreshError);
+      }
     }
-})
+
+    return Promise.reject(error);
+  }
+);
