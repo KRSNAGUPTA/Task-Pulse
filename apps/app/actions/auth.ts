@@ -14,6 +14,8 @@ export const signUpSchema = z.object({
     password: z.string().trim().min(6, "Password must be at least 6 characters")
 });
 
+const baseUrl = process.env.API_GATEWAY || process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:5001";
+
 type LoginRes = {
     user: {
         id: string;
@@ -37,10 +39,12 @@ export async function login(formData: FormData) {
         });
 
         if (!parseResult.success) {
-            return { error: parseResult.error.issues[0]?.message || "Invalid email or password" };
+            return { 
+                success: false,
+                error: parseResult.error.issues[0]?.message || "Invalid email or password" 
+            };
         }
 
-        const baseUrl = process.env.API_GATEWAY || process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8080";
         const response = await fetch(`${baseUrl}/api/auth/login`, {
             method: 'POST',
             headers: {
@@ -52,12 +56,14 @@ export async function login(formData: FormData) {
 
         const data = await response.json();
 
-        // 5. Check HTTP status before accessing properties
         if (!response.ok) {
-            return { error: data.message || "Invalid email or password" };
+            return { 
+                success: false,
+                error: data.message || "Invalid email or password" 
+            };
         }
 
-        // 6. Set HTTP-only RefreshToken cookie on Next.js response[cite: 3]
+        // Set HTTP-only RefreshToken cookie on Next.js response
         const setCookieHeaders = response.headers.get("set-cookie");
         if (setCookieHeaders) {
             const rawCookieValue = extractCookieValue(setCookieHeaders);
@@ -65,7 +71,7 @@ export async function login(formData: FormData) {
                 const cookieStore = await cookies();
                 cookieStore.set("RefreshToken", rawCookieValue, {
                     httpOnly: true,
-                    secure: process.env.NODE_ENV === "production", // Enabled in prod[cite: 3]
+                    secure: process.env.NODE_ENV === "production", 
                     sameSite: "lax",
                     path: "/",
                     maxAge: 7 * 24 * 60 * 60 // 7 days
@@ -76,6 +82,7 @@ export async function login(formData: FormData) {
         const loginRes = data as LoginRes;
         
         return {
+            success: true,
             accessToken: loginRes.token.accessToken,
             user: loginRes.user,
             org: loginRes.org
@@ -83,7 +90,59 @@ export async function login(formData: FormData) {
 
     } catch (error: any) {
         console.error("Login Server Action Error:", error?.message || error);
-        return { error: "Unable to reach authentication service. Please try again later." };
+        return { 
+            success: false,
+            error: "Unable to reach authentication service. Please try again later." 
+        };
+    }
+}
+
+export async function signup(formData: FormData) {
+    const zodRes = signUpSchema.safeParse({
+        name: formData.get("name"),
+        email: formData.get("email"),
+        password: formData.get("password")
+    });
+
+    if (!zodRes.success) {
+        return {
+            success: false,
+            error: zodRes.error.issues[0]?.message || "Invalid form data input"
+        };
+    }
+
+    try {
+        const res = await fetch(`${baseUrl}/api/auth/register`, {
+            method: 'POST',
+            body: JSON.stringify(zodRes.data),
+            headers: {
+                "Content-Type": "application/json"
+            },
+            cache: 'no-store'
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            return {
+                success: false,
+                status: res.status, // e.g., 409 Conflict
+                error: data?.message || "Failed to register"
+            };
+        }
+
+        return {
+            success: true,
+            message: "Registered Successfully",
+            user: data?.user
+        };
+
+    } catch (error: any) {
+        console.error("Signup Server Action Error:", error?.message || error);
+        return {
+            success: false,
+            error: error?.message || "Unable to reach authentication service."
+        };
     }
 }
 
