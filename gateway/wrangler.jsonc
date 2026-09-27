@@ -10,6 +10,14 @@
 	"observability": {
 		"enabled": true
 	},
+	"ratelimits": [{
+		"name": "MY_RATE_LIMITTER",
+		"namespace_id": "1",
+		"simple": {
+			"limit": 300,
+			"period": 60
+		}
+	}],
 	"upload_source_maps": true,
 	/**
 	 * Smart Placement
