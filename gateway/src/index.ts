@@ -14,7 +14,7 @@ const ROUTES: { prefix: string; service: keyof Env }[] = [
 ];
 
 function getAllowedOrigins(env: Env): string[] {
-	if (!env.CORS_ORIGIN) return ['*'];
+	if (!env.CORS_ORIGIN) return [];
 	if (Array.isArray(env.CORS_ORIGIN)) return env.CORS_ORIGIN;
 	try {
 		const parsed = JSON.parse(env.CORS_ORIGIN);
@@ -22,25 +22,36 @@ function getAllowedOrigins(env: Env): string[] {
 	} catch {
 		return env.CORS_ORIGIN.split(',').map((o) => o.trim());
 	}
-	return ['*'];
+	return [];
 }
 
 function getCorsHeaders(requestOrigin: string | null, allowedOrigins: string[]): Record<string, string> {
-	let matchedOrigin = '*';
+	// If no allowed origins, return empty headers (no CORS)
+	if (allowedOrigins.length === 0) {
+		return {};
+	}
+	let matchedOrigin: string | null = null;
 	if (allowedOrigins.includes('*')) {
 		matchedOrigin = '*';
 	} else if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
 		matchedOrigin = requestOrigin;
-	} else if (allowedOrigins.length > 0) {
-		matchedOrigin = allowedOrigins[0];
 	}
-
-	return {
+	// If still null, origin not allowed -> return empty headers
+	if (matchedOrigin === null) {
+		return {};
+	}
+	const headers: Record<string, string> = {
 		'Access-Control-Allow-Origin': matchedOrigin,
 		'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
 		'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 		'Access-Control-Max-Age': '86400',
 	};
+	// Allow cookies and HTTP authentication headers
+	// Only set credentials header if we are not reflecting a wildcard origin
+	if (matchedOrigin !== '*') {
+		headers['Access-Control-Allow-Credentials'] = 'true';
+	}
+	return headers;
 }
 
 const jsonResponse = (body: unknown, status = 200, headers: Record<string, string>): Response =>
