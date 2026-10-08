@@ -2,17 +2,8 @@
 
 import { cookies } from "next/headers";
 import { z } from "zod";
+import { loginSchema, signUpSchema } from "../lib/validations/auth";
 
-const loginSchema = z.object({
-    email: z.string().trim().lowercase().email("Invalid email address"),
-    password: z.string().trim().min(6, "Password must be at least 6 characters")
-});
-
-export const signUpSchema = z.object({
-    name: z.string().trim().min(1, "Name is required"),
-    email: z.string().trim().lowercase().email("Invalid email address"),
-    password: z.string().trim().min(6, "Password must be at least 6 characters")
-});
 
 const baseUrl = process.env.API_GATEWAY || process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:5001";
 
@@ -39,9 +30,9 @@ export async function login(formData: FormData) {
         });
 
         if (!parseResult.success) {
-            return { 
+            return {
                 success: false,
-                error: parseResult.error.issues[0]?.message || "Invalid email or password" 
+                error: parseResult.error.issues[0]?.message || "Invalid email or password"
             };
         }
 
@@ -57,9 +48,9 @@ export async function login(formData: FormData) {
         const data = await response.json();
 
         if (!response.ok) {
-            return { 
+            return {
                 success: false,
-                error: data.message || "Invalid email or password" 
+                error: data.message || "Invalid email or password"
             };
         }
 
@@ -71,7 +62,7 @@ export async function login(formData: FormData) {
                 const cookieStore = await cookies();
                 cookieStore.set("RefreshToken", rawCookieValue, {
                     httpOnly: true,
-                    secure: process.env.NODE_ENV === "production", 
+                    secure: process.env.NODE_ENV === "production",
                     sameSite: "lax",
                     path: "/",
                     maxAge: 7 * 24 * 60 * 60 // 7 days
@@ -80,7 +71,7 @@ export async function login(formData: FormData) {
         }
 
         const loginRes = data as LoginRes;
-        
+
         return {
             success: true,
             accessToken: loginRes.token.accessToken,
@@ -90,9 +81,9 @@ export async function login(formData: FormData) {
 
     } catch (error: any) {
         console.error("Login Server Action Error:", error?.message || error);
-        return { 
+        return {
             success: false,
-            error: "Unable to reach authentication service. Please try again later." 
+            error: "Unable to reach authentication service. Please try again later."
         };
     }
 }
@@ -150,3 +141,30 @@ function extractCookieValue(cookieHeader: string): string {
     const match = cookieHeader.match(/RefreshToken=([^;]+)/);
     return match ? match[1] : "";
 }
+
+export async function logout() {
+    try {
+        const cookieStore = await cookies();
+        cookieStore.set("RefreshToken", "", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            path: "/",
+            maxAge:0
+        });
+        console.log("User Logout")
+        return {
+            success: true,
+            message: "Logout Successful",
+            
+        }
+    } catch (error: any) {
+        return {
+            success: false,
+            error: error?.message || error,
+            message: "Failed to logout"
+        }
+    }
+}
+
+

@@ -30,8 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [setAuth, setInitializing, logout])
 
     if (isInitializing) {
-        return <div className="h-screen w-full flex justify-center items-center">
+        return <div className="h-screen w-full flex flex-col justify-center items-center">
             <div className="text-3xl animate-pulse">Loading...</div>
+            <div>Cold Start Delay....please wait for few seconds</div>
         </div>
     }
     return <>{children}</>
