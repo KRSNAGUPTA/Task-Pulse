@@ -1,31 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { signup } from "../actions/auth";
 
 describe("Signup Unit Tests", () => {
+    let fetchMock: ReturnType<typeof vi.fn>;
+
     beforeEach(() => {
         vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+        
+        fetchMock = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
     it("1. Should fail Zod validation immediately without calling fetch", async () => {
-        const fetchSpy = vi.spyOn(global, "fetch");
-
         const formData = new FormData();
-        formData.set("name", "");               // Invalid empty name
-        formData.set("email", "invalid-email"); // Invalid email
-        formData.set("password", "123");        // Invalid short password
+        formData.set("name", "");               
+        formData.set("email", "invalid-email"); 
+        formData.set("password", "123");        
 
         const result = await signup(formData);
 
         expect(result.success).toBe(false);
+        if (result.success) return; // ✅ Type guard: narrows to AuthErrorResult
+
         expect(result.error).toBeDefined();
-        // Verifies network call was NEVER triggered
-        expect(fetchSpy).not.toHaveBeenCalled(); 
+        expect(fetchMock).not.toHaveBeenCalled(); 
     });
 
     it("2. Should return success response when backend returns 200 OK", async () => {
         const mockUser = { id: "usr_123", name: "Test User", email: "test@example.com" };
 
-        vi.spyOn(global, "fetch").mockResolvedValueOnce({
+        fetchMock.mockResolvedValueOnce({
             ok: true,
             json: async () => ({ user: mockUser }),
         } as Response);
@@ -38,14 +47,15 @@ describe("Signup Unit Tests", () => {
         const result = await signup(formData);
 
         expect(result.success).toBe(true);
+        if (!result.success) return; // ✅ Type guard: narrows to SignupSuccessResult
+
         expect(result.message).toBe("Registered Successfully");
         expect(result.user).toEqual(mockUser);
-        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("3. Should return formatted error object when backend returns 409 Conflict", async () => {
-        // Mock fetch to simulate 409 Conflict from backend
-        vi.spyOn(global, "fetch").mockResolvedValueOnce({
+        fetchMock.mockResolvedValueOnce({
             ok: false,
             status: 409,
             json: async () => ({ message: "Email already registered" }),
@@ -59,13 +69,14 @@ describe("Signup Unit Tests", () => {
         const result = await signup(formData);
 
         expect(result.success).toBe(false);
+        if (result.success) return; // ✅ Type guard: narrows to AuthErrorResult
+
         expect(result.status).toBe(409);
         expect(result.error).toBe("Email already registered");
     });
 
     it("4. Should catch network errors gracefully if fetch throws an exception", async () => {
-        // Simulate total network breakdown / server down
-        vi.spyOn(global, "fetch").mockRejectedValueOnce(new Error("Failed to fetch"));
+        fetchMock.mockRejectedValueOnce(new Error("Failed to fetch"));
 
         const formData = new FormData();
         formData.set("name", "Test User");
@@ -75,6 +86,8 @@ describe("Signup Unit Tests", () => {
         const result = await signup(formData);
 
         expect(result.success).toBe(false);
+        if (result.success) return; // ✅ Type guard: narrows to AuthErrorResult
+
         expect(result.error).toBe("Failed to fetch");
     });
 });
