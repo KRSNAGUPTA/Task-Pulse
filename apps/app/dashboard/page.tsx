@@ -49,7 +49,7 @@ export default function DashboardPage() {
     if (!confirm("Are you sure you want to delete this task?")) return;
     try {
       await apiClient.delete(`/api/task/${id}`);
-      setTasks(tasks.filter((t) => t._id !== id));
+      setTasks(tasks.filter((t) => t.id !== id));
     } catch (err) {
       alert("Failed to delete task.");
     }
@@ -104,7 +104,7 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {tasks.map((task) => (
-              <TaskCard key={task._id} task={task} onEdit={(t) => { setEditingTask(t); setIsModalOpen(true); }} onDelete={handleDelete} />
+              <TaskCard key={task.id} task={task} onEdit={(t) => { setEditingTask(t); setIsModalOpen(true); }} onDelete={handleDelete} />
             ))}
           </div>
         )}

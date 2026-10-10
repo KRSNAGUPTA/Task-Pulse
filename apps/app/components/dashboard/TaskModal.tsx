@@ -46,7 +46,7 @@ export function TaskModal({ isOpen, onClose, taskToEdit, onSuccess }: TaskModalP
     setLoading(true);
     try {
       if (taskToEdit) {
-        await apiClient.patch(`/api/task/${taskToEdit._id}`, formData);
+        await apiClient.patch(`/api/task/${taskToEdit.id}`, formData);
       } else {
         await apiClient.post("/api/task", formData);
       }
@@ -115,7 +115,7 @@ export function TaskModal({ isOpen, onClose, taskToEdit, onSuccess }: TaskModalP
               <label className="block text-sm font-semibold text-surface-dark mb-1">Priority</label>
               <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value as TaskPriority })}
                 className="w-full rounded-lg border border-bg-subtle bg-bg-subtle/20 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
-                <option value="Low">Low</option>
+                <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
                 <option value="HIGH">High</option>
                 <option value="URGENT">Urgent</option>

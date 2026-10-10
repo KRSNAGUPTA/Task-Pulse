@@ -72,8 +72,6 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     const hashedPass = await hashPassword(cleanPassword);
 
-
-    // transaction write -> either complete or fail 
     const user = await prisma.user.create({
       data: {
         name: cleanName,
@@ -129,9 +127,17 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // Fetch user with all memberships and lastActiveOrgId
     const user = await prisma.user.findUnique({
       where: { email: cleanEmail },
-      include: { memberships: { select: { orgId: true, role: true }, take: 1 } },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        lastActiveOrgId: true, // Ensure this field exists in your Prisma User model
+        memberships: { select: { orgId: true, role: true } },
+      },
     });
 
     if (!user || !(await comparePassword(cleanPassword, user.password))) {
@@ -139,17 +145,20 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const membership = user.memberships[0];
-    if (!membership) {
+    if (user.memberships.length === 0) {
       res.status(403).json({ message: "Account has no workspace" });
       return;
     }
 
-    const accessToken = issueTokens(res, user, membership);
+    // ✅ FIX: Prefer lastActiveOrgId if valid, otherwise fallback to the first membership
+    const activeMembership =
+      user.memberships.find((m) => m.orgId === user.lastActiveOrgId) || user.memberships[0];
+
+    const accessToken = issueTokens(res, user, activeMembership);
 
     res.status(200).json({
       user: { id: user.id, name: user.name, email: user.email },
-      org: { id: membership.orgId, role: membership.role },
+      org: { id: activeMembership.orgId, role: activeMembership.role },
       token: { accessToken },
     });
   } catch (error: any) {
@@ -211,6 +220,54 @@ export async function refresh(req: Request, res: Response): Promise<void> {
   }
 }
 
+// ✅ NEW: Switch Organization Controller
+export async function switchOrg(req: Request, res: Response): Promise<void> {
+  try {
+    const auth = req.user;
+    if (!auth) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const { orgId } = req.body;
+    if (!orgId) {
+      res.status(400).json({ message: "orgId is required" });
+      return;
+    }
+
+    // 1. Verify user is a member of this org
+    const membership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId: auth.userId, orgId } },
+      select: { role: true, user: { select: { id: true, email: true } } },
+    });
+
+    if (!membership) {
+      res.status(403).json({ message: "Access denied to this organization" });
+      return;
+    }
+
+    // 2. Update last active org in DB for future logins
+    await prisma.user.update({
+      where: { id: auth.userId },
+      data: { lastActiveOrgId: orgId },
+    });
+
+    // 3. Issue new tokens scoped to the new org
+    const accessToken = issueTokens(res, membership.user, {
+      orgId,
+      role: membership.role,
+    });
+
+    res.status(200).json({
+      message: "Organization switched successfully",
+      token: { accessToken },
+    });
+  } catch (error: any) {
+    console.error("Error while switching org", error?.message || error);
+    res.status(500).json({ message: "Internal server error during org switch" });
+  }
+}
+
 export async function me(req: Request, res: Response): Promise<void> {
   try {
     const auth = req.user;
@@ -227,6 +284,7 @@ export async function me(req: Request, res: Response): Promise<void> {
         email: true,
         emailVerified: true,
         createdAt: true,
+        lastActiveOrgId: true,
         memberships: {
           select: { role: true, org: { select: { id: true, name: true, slug: true } } },
         },
@@ -238,6 +296,12 @@ export async function me(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // Fallback to first org if lastActiveOrgId is somehow invalid or null
+    const activeOrgId =
+      user.lastActiveOrgId && user.memberships.some((m) => m.org.id === user.lastActiveOrgId)
+        ? user.lastActiveOrgId
+        : user.memberships[0]?.org.id;
+
     res.status(200).json({
       user: {
         id: user.id,
@@ -246,7 +310,7 @@ export async function me(req: Request, res: Response): Promise<void> {
         emailVerified: user.emailVerified,
         createdAt: user.createdAt,
       },
-      activeOrgId: auth.orgId,
+      activeOrgId,
       orgs: user.memberships.map((m) => ({ ...m.org, role: m.role })),
     });
   } catch (error: any) {
