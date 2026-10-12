@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 // import { prisma } from './utils/prisma.js';
 import authRoutes from "./routes/auth.routes.js"
+import orgRoutes from "./routes/org.routes.js"
 import jwksRoutes from "./routes/jwks.routes.js"
 import cookieParser from 'cookie-parser';
 
@@ -26,6 +27,7 @@ app.get("/",(req, res)=>{
   })
 })
 app.use("/api/auth", authRoutes)
+app.use("/api/auth", orgRoutes )
 app.use("/",jwksRoutes );
 
 app.listen(PORT, () => {
