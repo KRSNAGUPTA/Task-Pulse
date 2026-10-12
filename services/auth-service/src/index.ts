@@ -27,7 +27,7 @@ app.get("/",(req, res)=>{
   })
 })
 app.use("/api/auth", authRoutes)
-app.use("/api/auth", orgRoutes )
+app.use("/api/auth/org", orgRoutes )
 app.use("/",jwksRoutes );
 
 app.listen(PORT, () => {
