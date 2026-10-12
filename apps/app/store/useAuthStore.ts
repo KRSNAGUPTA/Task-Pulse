@@ -25,6 +25,7 @@ interface IAuthStore {
   logout: () => void;
   setAuth: (user: IUser, accessToken: string) => void;
   setActiveOrgId: (orgId: string) => void;
+  applyOrgSwitch: (orgId: string, accessToken: string) => void;
 }
 
 export const useAuthStore = create<IAuthStore>((set) => ({
@@ -37,5 +38,9 @@ export const useAuthStore = create<IAuthStore>((set) => ({
   setAuth: (user, accessToken) => set({ user, accessToken, isInitializing: false }),
   setActiveOrgId: (orgId) => set((state) => ({
     user: state.user ? { ...state.user, activeOrgId: orgId } : null
+  })),
+  applyOrgSwitch: (orgId, accessToken) => set((state) => ({
+    accessToken,
+    user: state.user ? { ...state.user, activeOrgId: orgId } : null,
   })),
 }));

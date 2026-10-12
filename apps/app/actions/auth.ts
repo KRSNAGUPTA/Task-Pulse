@@ -7,8 +7,9 @@ const baseUrl = process.env.API_GATEWAY || process.env.NEXT_PUBLIC_GATEWAY_URL |
 
 type LoginRes = {
   user: { id: string; name: string; email: string };
-  activeOrgId: string;
-  orgs: Array<{ id: string; name: string; slug: string; role: string }>;
+  activeOrgId?: string;
+  org?: { id: string; role: string };
+  orgs?: Array<{ id: string; name: string; slug: string; role: string }>;
   token: { accessToken: string };
 };
 
@@ -19,7 +20,13 @@ type RegisterRes = {
 };
 
 export type AuthErrorResult = { success: false; error: string; fieldErrors?: Record<string, string[]>; status?: number; };
-export type LoginSuccessResult = { success: true; accessToken: string; user: { id: string; name: string; email: string }; activeOrgId: string; orgs: Array<{ id: string; name: string; slug: string; role: string }>; };
+export type LoginSuccessResult = {
+  success: true;
+  accessToken: string;
+  user: { id: string; name: string; email: string; activeOrgId: string };
+  activeOrgId: string;
+  orgs: Array<{ id: string; name: string; slug: string; role: string }>;
+};
 export type SignupSuccessResult = { success: true; message: string; accessToken: string; user: { id: string; name: string; email: string; createdAt: string }; org: { id: string; role: string }; };
 
 export type LoginResult = AuthErrorResult | LoginSuccessResult;
@@ -40,8 +47,23 @@ export async function login(formData: FormData): Promise<LoginResult> {
 
     await setRefreshCookie(response.headers.get("set-cookie"));
     const loginRes = data as LoginRes;
-    
-    return { success: true, accessToken: loginRes.token.accessToken, user: loginRes.user, activeOrgId: loginRes.activeOrgId, orgs: loginRes.orgs };
+
+    // ✅ FIX: auth service returns `org` (singular) + optional `orgs`/`activeOrgId`.
+    // Normalize so the client always receives `activeOrgId` + `orgs` (array).
+    const activeOrgId = loginRes.activeOrgId ?? loginRes.org?.id;
+    const orgs = loginRes.orgs ?? (loginRes.org ? [{ id: loginRes.org.id, name: "", slug: "", role: loginRes.org.role }] : []);
+
+    if (!activeOrgId) {
+      return { success: false, error: "Login response missing active organization" };
+    }
+
+    return {
+      success: true,
+      accessToken: loginRes.token.accessToken,
+      user: { ...loginRes.user, activeOrgId },
+      activeOrgId,
+      orgs,
+    };
   } catch (error: any) {
     return { success: false, error: "Unable to reach authentication service." };
   }
@@ -62,7 +84,7 @@ export async function signup(formData: FormData): Promise<SignupResult> {
 
     await setRefreshCookie(res.headers.get("set-cookie"));
     const registerRes = data as RegisterRes;
-    
+
     return { success: true, message: "Registered Successfully", accessToken: registerRes.token.accessToken, user: registerRes.user, org: registerRes.org };
   } catch (error: any) {
     return { success: false, error: "Unable to reach authentication service." };
@@ -76,6 +98,46 @@ export async function logout() {
     return { success: true, message: "Logout Successful" };
   } catch (error: any) {
     return { success: false, error: error?.message || "Failed to logout" };
+  }
+}
+
+// ✅ NEW: server action to switch orgs. Runs on the server, forwards the
+// refresh cookie (via the current access token passed from the client),
+// and returns the new access token + org.
+export type SwitchOrgResult =
+  | { success: true; accessToken: string; org: { id: string; role: string } }
+  | { success: false; error: string; status?: number };
+
+export async function switchOrgAction(orgId: string, currentAccessToken: string): Promise<SwitchOrgResult> {
+  if (!orgId) return { success: false, error: "orgId is required" };
+  if (!currentAccessToken) return { success: false, error: "Missing access token" };
+
+  try {
+    const res = await fetch(`${baseUrl}/api/auth/switch-org`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentAccessToken}`,
+      },
+      body: JSON.stringify({ orgId }),
+      cache: "no-store",
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, status: res.status, error: data?.message || "Failed to switch organization" };
+    }
+
+    // Persist the rotated refresh cookie on the Next.js side
+    await setRefreshCookie(res.headers.get("set-cookie"));
+
+    return {
+      success: true,
+      accessToken: data.token.accessToken,
+      org: { id: orgId, role: data.org?.role ?? "" },
+    };
+  } catch (error: any) {
+    return { success: false, error: "Unable to reach authentication service." };
   }
 }
 

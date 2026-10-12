@@ -71,7 +71,7 @@ async function loadForEdit(req: Request, res: Response, taskId: string, check = 
 
 async function getOrgMemberIds(orgId: string): Promise<Set<string>> {
   try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/org/internal/${orgId}/members`, {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/auth/org/internal/${orgId}/members`, {
       headers: {
         "x-internal-secret": INTERNAL_SECRET,
         "Content-Type": "application/json"
@@ -80,7 +80,7 @@ async function getOrgMemberIds(orgId: string): Promise<Set<string>> {
     
     if (!res.ok) {
       console.error(`Failed to fetch org members: ${res.status}`);
-      return new Set(); // Fail open: allow task creation if auth service is temporarily down
+      return new Set(); 
     }
     
     const json = await res.json();

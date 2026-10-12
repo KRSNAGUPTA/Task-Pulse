@@ -1,3 +1,4 @@
+// app/lib/api-client.ts
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "../store/useAuthStore";
 
@@ -9,7 +10,7 @@ if (!baseUrl) {
 
 export const apiClient = axios.create({
   baseURL: baseUrl,
-  withCredentials: true, 
+  withCredentials: true,
 });
 
 let isRefreshing = false;
@@ -23,11 +24,39 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
+function decodeJwtPayload(token: string): { orgId?: string; userId?: string } | null {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    // atob works in the browser; this client runs client-side only.
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return json;
+  } catch {
+    return null;
+  }
+}
+
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const accessToken = useAuthStore.getState().accessToken;
+  const { accessToken, user } = useAuthStore.getState();
+
   if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    const tokenOrg = claims?.orgId;
+    const storeOrg = user?.activeOrgId;
+
+    if (tokenOrg && storeOrg && tokenOrg !== storeOrg) {
+      console.error(
+        `[apiClient] org mismatch — token.orgId=${tokenOrg} store.activeOrgId=${storeOrg}. ` +
+        `Refusing to send a request that would leak data across orgs.`
+      );
+      return Promise.reject(
+        new Error("Org mismatch between access token and store. Refresh or switch org.")
+      );
+    }
+
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
+
   return config;
 });
 
@@ -40,7 +69,8 @@ apiClient.interceptors.response.use(
       error.response?.status === 401 &&
       !originalReq._retry &&
       !originalReq.url?.includes("/api/auth/refresh") &&
-      !originalReq.url?.includes("/api/auth/login")
+      !originalReq.url?.includes("/api/auth/login") &&
+      !originalReq.url?.includes("/api/auth/switch-org")
     ) {
       originalReq._retry = true;
 
@@ -55,10 +85,9 @@ apiClient.interceptors.response.use(
 
       isRefreshing = true;
 
-      try { 
-        // Calls the local Next.js Route Handler, which forwards the cookie to the Gateway
+      try {
         const { data } = await axios.post(
-          `/api/auth/refresh`, 
+          `/api/auth/refresh`,
           {},
           { withCredentials: true }
         );
@@ -72,7 +101,7 @@ apiClient.interceptors.response.use(
         originalReq.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(originalReq);
       } catch (refreshError: any) {
-        console.log(refreshError)
+        console.log(refreshError);
         processQueue(refreshError, null);
         useAuthStore.getState().logout();
         if (typeof window !== "undefined") {
