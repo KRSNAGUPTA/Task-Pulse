@@ -9,7 +9,7 @@ if (!baseUrl) {
 
 export const apiClient = axios.create({
   baseURL: baseUrl,
-  withCredentials: true, // Mandatory for HTTP-only cookies
+  withCredentials: true, 
 });
 
 let isRefreshing = false;

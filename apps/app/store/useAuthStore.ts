@@ -24,18 +24,18 @@ interface IAuthStore {
   setAccessToken: (token: string | null) => void;
   logout: () => void;
   setAuth: (user: IUser, accessToken: string) => void;
-  setActiveOrg: (orgId: string) => void;
+  setActiveOrgId: (orgId: string) => void;
 }
 
 export const useAuthStore = create<IAuthStore>((set) => ({
   user: null,
   accessToken: null,
-  isInitializing: true, // Start true to prevent premature redirects
+  isInitializing: true,
   setInitializing: (isInitializing) => set({ isInitializing }),
   setAccessToken: (accessToken) => set({ accessToken }),
   logout: () => set({ accessToken: null, user: null, isInitializing: false }),
   setAuth: (user, accessToken) => set({ user, accessToken, isInitializing: false }),
-  setActiveOrg: (orgId) => set((state) => ({ 
-    user: state.user ? { ...state.user, activeOrgId: orgId } : null 
+  setActiveOrgId: (orgId) => set((state) => ({
+    user: state.user ? { ...state.user, activeOrgId: orgId } : null
   })),
 }));

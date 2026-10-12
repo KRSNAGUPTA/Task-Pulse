@@ -29,14 +29,12 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
     setFieldErrors({});
   };
 
-  // --- LOGIN HANDLER ---
   const handleLogin = async (
     _prev: ActionState,
-    formData: FormData
+    formData: FormData,
   ): Promise<ActionState> => {
     setFieldErrors({});
 
-    // 1. Client-side validation
     const rawData = {
       email: formData.get("email"),
       password: formData.get("password"),
@@ -54,20 +52,16 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
       return { error: "Please correct the errors below.", success: false };
     }
 
-    // 2. Server Action
     const res = await login(formData);
 
-    // 3. Type Narrowing: Handle Errors
     if (!res.success) {
-      toast.add({
-        title: "Login failed",
-        description: res.error,
-      });
+      toast.add({ title: "Login failed", description: res.error });
       return { error: res.error, success: false };
     }
 
-    // 4. Handle Success (TypeScript now knows res has accessToken and user)
-    setAuth(res.user, res.accessToken);
+    const { accessToken, user, activeOrgId, orgs } = res;
+
+    setAuth({ ...user, activeOrgId, orgs }, accessToken);
     toast.add({
       title: "Welcome back",
       description: "Signed in successfully.",
@@ -76,14 +70,12 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
     return { error: null, success: true };
   };
 
-  // --- SIGNUP HANDLER ---
   const handleSignup = async (
     _prev: ActionState,
-    formData: FormData
+    formData: FormData,
   ): Promise<ActionState> => {
     setFieldErrors({});
 
-    // 1. Client-side validation
     const rawData = {
       name: formData.get("name"),
       email: formData.get("email"),
@@ -102,10 +94,8 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
       return { error: "Please correct the errors below.", success: false };
     }
 
-    // 2. Server Action
     const res = await signup(formData);
 
-    // 3. Handle Errors
     if (!res.success) {
       toast.add({
         title: "Registration failed",
@@ -113,29 +103,39 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
       });
       return { error: res.error || "Registration failed.", success: false };
     }
+    
+    const { accessToken, user, org } = res;
 
-    // 4. Handle Success 
-    // Note: Your auth.ts doesn't return a token on signup, so we just 
-    // show a success message and switch to the login tab.
+    setAuth(
+      {
+        ...user,
+        activeOrgId: org.id,
+        orgs: [
+          { id: org.id, name: "Personal workspace", slug: "", role: org.role },
+        ],
+      },
+      accessToken,
+    );
     toast.add({
       title: "Account created",
-      description: "Please log in with your credentials.",
+      description: "Welcome to Task Pulse!",
     });
-    handleTabChange("login");
+    router.push("/dashboard");
     return { error: null, success: true };
   };
 
-  const [loginState, loginAction, isLoginPending] = useActionState<ActionState, FormData>(
-    handleLogin,
-    null
-  );
+  const [loginState, loginAction, isLoginPending] = useActionState<
+    ActionState,
+    FormData
+  >(handleLogin, null);
 
-  const [signupState, signupAction, isSignupPending] = useActionState<ActionState, FormData>(
-    handleSignup,
-    null
-  );
+  const [signupState, signupAction, isSignupPending] = useActionState<
+    ActionState,
+    FormData
+  >(handleSignup, null);
 
-  const activeError = activeTab === "login" ? loginState?.error : signupState?.error;
+  const activeError =
+    activeTab === "login" ? loginState?.error : signupState?.error;
 
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg-subtle/40 px-4 py-8 sm:px-6">
@@ -144,7 +144,6 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
 
       {/* Main Split Card Container */}
       <div className="relative z-10 flex w-full max-w-4xl overflow-hidden rounded-3xl sm:rounded-[32px] border border-secondary/40 bg-white shadow-2xl shadow-surface-dark/10">
-        
         {/* Left Section: Form Area */}
         <div className="flex w-full flex-col justify-center px-6 py-8 sm:px-10 lg:px-14 lg:w-1/2">
           {/* Header */}
@@ -173,7 +172,9 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
               type="button"
               onClick={() => handleTabChange("login")}
               className={`cursor-pointer relative z-10 w-1/2 py-2 text-sm font-bold tracking-wide transition-colors duration-200 ${
-                activeTab === "login" ? "text-primary " : "text-accent hover:text-surface-dark"
+                activeTab === "login"
+                  ? "text-primary "
+                  : "text-accent hover:text-surface-dark"
               }`}
             >
               Login
@@ -182,7 +183,9 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
               type="button"
               onClick={() => handleTabChange("signup")}
               className={`cursor-pointer relative z-10 w-1/2 py-2 text-sm font-bold tracking-wide transition-colors duration-200 ${
-                activeTab === "signup" ? "text-primary" : "text-accent hover:text-surface-dark"
+                activeTab === "signup"
+                  ? "text-primary"
+                  : "text-accent hover:text-surface-dark"
               }`}
             >
               Sign up
@@ -192,7 +195,11 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
           {/* Banner Error */}
           {activeError && (
             <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50/80 p-3 text-sm font-medium text-red-600">
-              <svg className="h-5 w-5 shrink-0 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+              <svg
+                className="h-5 w-5 shrink-0 text-red-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
                 <path
                   fillRule="evenodd"
                   d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
@@ -211,11 +218,21 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
               }`}
             >
               {/* Login Form */}
-              <div className={`w-1/2 pr-2 sm:pr-3 ${activeTab !== "login" ? "pointer-events-none invisible" : ""}`}>
+              <div
+                className={`w-1/2 pr-2 sm:pr-3 ${activeTab !== "login" ? "pointer-events-none invisible" : ""}`}
+              >
                 <form action={loginAction} className="space-y-4">
                   <div className="space-y-1">
                     <div className="relative flex items-center">
-                      <svg className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
                         <circle cx="12" cy="7" r="4" />
                       </svg>
@@ -235,13 +252,32 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
                         }`}
                       />
                     </div>
-                    {fieldErrors.email && <p className="pl-2 text-xs text-red-500">{fieldErrors.email}</p>}
+                    {fieldErrors.email && (
+                      <p className="pl-2 text-xs text-red-500">
+                        {fieldErrors.email}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1">
                     <div className="relative flex items-center">
-                      <svg className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                      <svg
+                        className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect
+                          width="18"
+                          height="11"
+                          x="3"
+                          y="11"
+                          rx="2"
+                          ry="2"
+                        />
                         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                       </svg>
                       <input
@@ -268,7 +304,11 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
                         {showPassword ? "Hide" : "Show"}
                       </button>
                     </div>
-                    {fieldErrors.password && <p className="pl-2 text-xs text-red-500">{fieldErrors.password}</p>}
+                    {fieldErrors.password && (
+                      <p className="pl-2 text-xs text-red-500">
+                        {fieldErrors.password}
+                      </p>
+                    )}
                   </div>
 
                   <button
@@ -283,11 +323,21 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
               </div>
 
               {/* Signup Form */}
-              <div className={`w-1/2 pl-2 sm:pl-3 ${activeTab !== "signup" ? "pointer-events-none invisible" : ""}`}>
+              <div
+                className={`w-1/2 pl-2 sm:pl-3 ${activeTab !== "signup" ? "pointer-events-none invisible" : ""}`}
+              >
                 <form action={signupAction} className="space-y-4">
                   <div className="space-y-1">
                     <div className="relative flex items-center">
-                      <svg className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
                         <circle cx="12" cy="7" r="4" />
                       </svg>
@@ -306,12 +356,24 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
                         }`}
                       />
                     </div>
-                    {fieldErrors.name && <p className="pl-2 text-xs text-red-500">{fieldErrors.name}</p>}
+                    {fieldErrors.name && (
+                      <p className="pl-2 text-xs text-red-500">
+                        {fieldErrors.name}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1">
                     <div className="relative flex items-center">
-                      <svg className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <rect width="20" height="16" x="2" y="4" rx="2" />
                         <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
                       </svg>
@@ -331,13 +393,32 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
                         }`}
                       />
                     </div>
-                    {fieldErrors.email && <p className="pl-2 text-xs text-red-500">{fieldErrors.email}</p>}
+                    {fieldErrors.email && (
+                      <p className="pl-2 text-xs text-red-500">
+                        {fieldErrors.email}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1">
                     <div className="relative flex items-center">
-                      <svg className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                      <svg
+                        className="absolute left-3 sm:left-4 h-4 w-4 sm:h-5 sm:w-5 text-accent"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect
+                          width="18"
+                          height="11"
+                          x="3"
+                          y="11"
+                          rx="2"
+                          ry="2"
+                        />
                         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                       </svg>
                       <input
@@ -364,7 +445,11 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
                         {showPassword ? "Hide" : "Show"}
                       </button>
                     </div>
-                    {fieldErrors.password && <p className="pl-2 text-xs text-red-500">{fieldErrors.password}</p>}
+                    {fieldErrors.password && (
+                      <p className="pl-2 text-xs text-red-500">
+                        {fieldErrors.password}
+                      </p>
+                    )}
                   </div>
 
                   <button
@@ -384,30 +469,59 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
         {/* Right Section: Olive Earthy Gradient Showcase Area */}
         <div className="relative hidden w-1/2 flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-surface-dark via-surface-dark to-surface-darker p-10 lg:flex">
           <div className="pointer-events-none absolute inset-0 opacity-15">
-            <svg className="h-full w-full" viewBox="0 0 400 600" preserveAspectRatio="none">
-              <path d="M0,100 C150,200 250,50 400,150 L400,600 L0,600 Z" fill="none" stroke="var(--color-bg-subtle)" strokeWidth="2" />
-              <path d="M0,250 C100,350 300,150 400,300 L400,600 L0,600 Z" fill="none" stroke="var(--color-bg-subtle)" strokeWidth="2" />
+            <svg
+              className="h-full w-full"
+              viewBox="0 0 400 600"
+              preserveAspectRatio="none"
+            >
+              <path
+                d="M0,100 C150,200 250,50 400,150 L400,600 L0,600 Z"
+                fill="none"
+                stroke="var(--color-bg-subtle)"
+                strokeWidth="2"
+              />
+              <path
+                d="M0,250 C100,350 300,150 400,300 L400,600 L0,600 Z"
+                fill="none"
+                stroke="var(--color-bg-subtle)"
+                strokeWidth="2"
+              />
             </svg>
           </div>
 
           <div className="relative flex h-[340px] w-64 flex-col items-center justify-between rounded-[28px] border border-white/20 bg-white/10 p-6 text-center backdrop-blur-md">
             <div className="absolute -left-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-bg-subtle shadow-md">
-              <svg className="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="currentColor">
+              <svg
+                className="h-4 w-4 text-primary"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
               </svg>
             </div>
 
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-subtle/20 shadow-inner">
-              <svg className="h-6 w-6 text-bg-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className="h-6 w-6 text-bg-subtle"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M12 20h9" />
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
               </svg>
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-base font-bold text-bg-subtle">Focus & Organize</h3>
+              <h3 className="text-base font-bold text-bg-subtle">
+                Focus & Organize
+              </h3>
               <p className="text-xs leading-relaxed text-secondary">
-                Track sprints, update tasks in real-time, and manage deadlines smoothly.
+                Track sprints, update tasks in real-time, and manage deadlines
+                smoothly.
               </p>
             </div>
 
@@ -417,7 +531,6 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );

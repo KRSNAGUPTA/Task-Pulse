@@ -4,6 +4,7 @@
 import { useAuthStore } from "@/app/store/useAuthStore";
 import { logout } from "@/app/actions/auth";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,10 +14,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { User, LogOut, Building2, ChevronDown } from "lucide-react";
+import { apiClient } from "@/app/lib/api-client";
 
 export function DashboardHeader() {
-  const { user, setActiveOrg } = useAuthStore();
+  const { user, setActiveOrgId, setAccessToken } = useAuthStore();
   const router = useRouter();
+  const [isSwitching, setIsSwitching] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -24,27 +27,43 @@ export function DashboardHeader() {
     router.push("/login");
   };
 
+  const handleSwitchOrg = async (orgId: string) => {
+    if (user?.activeOrgId === orgId) return;
+    
+    setIsSwitching(true);
+    try {
+      const res = await apiClient.post("/api/auth/switch-org", { orgId });
+      const newToken = res.data.token.accessToken;
+      
+      // Update store with new token and org ID
+      setAccessToken(newToken);
+      setActiveOrgId(orgId);
+      
+      // Force reload to clear task caches and fetch new org's data
+      window.location.href = "/dashboard";
+    } catch (error) {
+      console.error("Failed to switch org", error);
+      alert("Failed to switch workspace.");
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
   const activeOrg = user?.orgs?.find((org) => org.id === user.activeOrgId);
 
   return (
     <header className="sticky top-0 z-30 border-b border-bg-subtle bg-white/80 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        {/* Left Side: Logo & Title */}
         <div className="flex items-center gap-3">
-          {/* ✅ Logo uses font-display */}
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-dark text-sm font-display font-bold text-bg-subtle shadow-sm">
             TP
           </div>
-          {/* ✅ All other text uses font-sans */}
           <div>
-            <h1 className="text-lg font-sans font-bold tracking-tight text-foreground">
-              Dashboard
-            </h1>
+            <h1 className="text-lg font-sans font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="text-xs font-medium text-muted">Manage your workspace</p>
           </div>
         </div>
 
-        {/* Right Side: Profile Dropdown */}
         <div className="flex items-center gap-4">
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg border border-bg-subtle bg-white px-3 py-2 text-sm font-semibold text-surface-dark shadow-sm transition-all hover:bg-bg-subtle/50 focus:outline-none focus:ring-2 focus:ring-primary/20">
@@ -52,35 +71,30 @@ export function DashboardHeader() {
                 <User className="h-4 w-4" />
               </div>
               <span className="max-w-[120px] truncate sm:max-w-[200px]">
-                {user?.name || user?.email}
+                {activeOrg?.name || user?.name || user?.email}
               </span>
-              <ChevronDown className="h-4 w-4 text-muted transition-transform group-data-[state=open]:rotate-180" />
+              <ChevronDown className="h-4 w-4 text-muted" />
             </DropdownMenuTrigger>
             
             <DropdownMenuContent align="end" className="w-64">
-              {/* User Info Label */}
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none text-foreground">
-                    {user?.name || "User"}
-                  </p>
-                  <p className="text-xs leading-none text-muted">
-                    {user?.email}
-                  </p>
+                  <p className="text-sm font-medium leading-none text-foreground">{user?.name || "User"}</p>
+                  <p className="text-xs leading-none text-muted">{user?.email}</p>
                 </div>
               </DropdownMenuLabel>
 
-              {/* Org Switcher Section */}
-              {user?.orgs && user.orgs.length > 1 && (
+              {user?.orgs && user.orgs.length > 0 && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs font-semibold text-muted uppercase tracking-wider">
-                    Workspace
+                    Workspaces
                   </DropdownMenuLabel>
                   {user.orgs.map((org) => (
                     <DropdownMenuItem
                       key={org.id}
-                      onClick={() => setActiveOrg(org.id)}
+                      onClick={() => handleSwitchOrg(org.id)}
+                      disabled={isSwitching || user.activeOrgId === org.id}
                       className="flex cursor-pointer items-center justify-between"
                     >
                       <span className="flex items-center gap-2">
@@ -95,7 +109,6 @@ export function DashboardHeader() {
                 </>
               )}
 
-              {/* Logout Section */}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}

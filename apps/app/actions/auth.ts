@@ -1,12 +1,21 @@
+// app/actions/auth.ts
 'use server';
 import { cookies } from "next/headers";
+import { z } from "zod";
 import { loginSchema, signUpSchema } from "../lib/validations/auth";
 
 const baseUrl = process.env.API_GATEWAY || process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:5001";
 
 type LoginRes = {
   user: { id: string; name: string; email: string };
-  org?: { id: string; role: string };
+  activeOrgId: string;
+  orgs: Array<{ id: string; name: string; slug: string; role: string }>;
+  token: { accessToken: string };
+};
+
+type RegisterRes = {
+  user: { id: string; name: string; email: string; createdAt: string };
+  org: { id: string; role: string };
   token: { accessToken: string };
 };
 
@@ -21,13 +30,16 @@ export type LoginSuccessResult = {
   success: true;
   accessToken: string;
   user: { id: string; name: string; email: string };
-  org?: { id: string; role: string };
+  activeOrgId: string;
+  orgs: Array<{ id: string; name: string; slug: string; role: string }>;
 };
 
 export type SignupSuccessResult = {
   success: true;
   message: string;
-  user: any;
+  accessToken: string;
+  user: { id: string; name: string; email: string; createdAt: string };
+  org: { id: string; role: string };
 };
 
 export type LoginResult = AuthErrorResult | LoginSuccessResult;
@@ -44,7 +56,7 @@ export async function login(formData: FormData): Promise<LoginResult> {
       return {
         success: false,
         error: parseResult.error.issues[0]?.message || "Invalid email or password",
-        fieldErrors: parseResult.error.flatten().fieldErrors // Added fieldErrors
+        fieldErrors: parseResult.error.flatten().fieldErrors
       };
     }
 
@@ -58,13 +70,9 @@ export async function login(formData: FormData): Promise<LoginResult> {
     const data = await response.json();
 
     if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || "Invalid email or password"
-      };
+      return { success: false, error: data.message || "Invalid email or password" };
     }
 
-    // Set HTTP-only RefreshToken cookie on Next.js response
     const setCookieHeaders = response.headers.get("set-cookie");
     if (setCookieHeaders) {
       const rawCookieValue = extractCookieValue(setCookieHeaders);
@@ -75,7 +83,7 @@ export async function login(formData: FormData): Promise<LoginResult> {
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
           path: "/",
-          maxAge: 7 * 24 * 60 * 60 // 7 days
+          maxAge: 7 * 24 * 60 * 60
         });
       }
     }
@@ -83,16 +91,14 @@ export async function login(formData: FormData): Promise<LoginResult> {
     const loginRes = data as LoginRes;
     return {
       success: true,
-      accessToken: loginRes.token.accessToken, // Note: returns accessToken, not token
+      accessToken: loginRes.token.accessToken,
       user: loginRes.user,
-      org: loginRes.org
+      activeOrgId: loginRes.activeOrgId,
+      orgs: loginRes.orgs
     };
   } catch (error: any) {
     console.error("Login Server Action Error:", error?.message || error);
-    return {
-      success: false,
-      error: "Unable to reach authentication service. Please try again later."
-    };
+    return { success: false, error: "Unable to reach authentication service. Please try again later." };
   }
 }
 
@@ -107,7 +113,7 @@ export async function signup(formData: FormData): Promise<SignupResult> {
     return {
       success: false,
       error: zodRes.error.issues[0]?.message || "Invalid form data input",
-      fieldErrors: zodRes.error.flatten().fieldErrors // Added fieldErrors
+      fieldErrors: zodRes.error.flatten().fieldErrors
     };
   }
 
@@ -122,30 +128,36 @@ export async function signup(formData: FormData): Promise<SignupResult> {
     const data = await res.json();
 
     if (!res.ok) {
-      return {
-        success: false,
-        status: res.status,
-        error: data?.message || "Failed to register"
-      };
+      return { success: false, status: res.status, error: data?.message || "Failed to register" };
     }
 
+    const setCookieHeaders = res.headers.get("set-cookie");
+    if (setCookieHeaders) {
+      const rawCookieValue = extractCookieValue(setCookieHeaders);
+      if (rawCookieValue) {
+        const cookieStore = await cookies();
+        cookieStore.set("RefreshToken", rawCookieValue, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: 7 * 24 * 60 * 60
+        });
+      }
+    }
+
+    const registerRes = data as RegisterRes;
     return {
       success: true,
       message: "Registered Successfully",
-      user: data?.user
+      accessToken: registerRes.token.accessToken,
+      user: registerRes.user,
+      org: registerRes.org
     };
   } catch (error: any) {
     console.error("Signup Server Action Error:", error?.message || error);
-    return {
-      success: false,
-      error: error?.message || "Unable to reach authentication service."
-    };
+    return { success: false, error: "Unable to reach authentication service." };
   }
-}
-
-function extractCookieValue(cookieHeader: string): string {
-  const match = cookieHeader.match(/RefreshToken=([^;]+)/);
-  return match ? match[1] : "";
 }
 
 export async function logout() {
@@ -158,9 +170,13 @@ export async function logout() {
       path: "/",
       maxAge: 0
     });
-    console.log("User Logout");
     return { success: true, message: "Logout Successful" };
   } catch (error: any) {
-    return { success: false, error: error?.message || error, message: "Failed to logout" };
+    return { success: false, error: error?.message || "Failed to logout" };
   }
+}
+
+function extractCookieValue(cookieHeader: string): string {
+  const match = cookieHeader.match(/RefreshToken=([^;]+)/);
+  return match ? match[1] : "";
 }
