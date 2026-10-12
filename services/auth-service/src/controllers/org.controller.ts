@@ -119,3 +119,37 @@ export const addMember = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+export const getOrgMembersInternal = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const internalSecret = req.headers["x-internal-secret"];
+    if (internalSecret !== process.env.INTERNAL_SERVICE_SECRET) {
+      res.status(401).json({ message: "Unauthorized: Invalid internal secret" });
+      return;
+    }
+
+    const { orgId } = req.params as { orgId: string };
+    if (!orgId) {
+      res.status(400).json({ message: "orgId is required" });
+      return;
+    }
+
+    const members = await prisma.membership.findMany({
+      where: { orgId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    res.status(200).json({ 
+      data: members.map((m) => ({ 
+        id: m.user.id, 
+        name: m.user.name, 
+        email: m.user.email, 
+        role: m.role 
+      })) 
+    });
+  } catch (error: any) {
+    console.error("Get Members Internal Error:", error?.message || error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

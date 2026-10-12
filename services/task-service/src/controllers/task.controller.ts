@@ -16,6 +16,8 @@ import { buildListFilter, buildSort, dayBounds } from "../utility/taskQuery.js";
 import { canDelete, canEdit } from "../utility/permissions.js";
 import { redisUtil } from "../utility/redisUtility.js";
 
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:5001";
+const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || ""
 const ITEM_TTL = 15*60; // seconds
 const LIST_TTL = 120; // lists/stats are short-lived: they also depend on "now"
 
@@ -39,7 +41,6 @@ async function invalidate(orgId: string, taskId?: string): Promise<void> {
   ]);
 }
 
-// ---------- response helpers ----------
 const validationError = (res: Response, error: z.ZodError) =>
   res.status(422).json({ message: "Validation failed", errors: z.flattenError(error) });
 
@@ -67,7 +68,28 @@ async function loadForEdit(req: Request, res: Response, taskId: string, check = 
   return { task };
 }
 
-// ---------- handlers ----------
+
+async function getOrgMemberIds(orgId: string): Promise<Set<string>> {
+  try {
+    const res = await fetch(`${AUTH_SERVICE_URL}/api/org/internal/${orgId}/members`, {
+      headers: {
+        "x-internal-secret": INTERNAL_SECRET,
+        "Content-Type": "application/json"
+      }
+    });
+    
+    if (!res.ok) {
+      console.error(`Failed to fetch org members: ${res.status}`);
+      return new Set(); // Fail open: allow task creation if auth service is temporarily down
+    }
+    
+    const json = await res.json();
+    return new Set(json.data.map((m: any) => m.id));
+  } catch (error) {
+    console.error("Network error fetching org members:", error);
+    return new Set();
+  }
+}
 export const createTask = async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = CreateTaskSchema.safeParse(req.body);
@@ -75,9 +97,16 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
       validationError(res, parsed.error);
       return;
     }
-
     const { userId, orgId } = req.user!;
     const data = parsed.data;
+
+    if (data.assigneeId) {
+      const memberIds = await getOrgMemberIds(orgId);
+      if (memberIds.size > 0 && !memberIds.has(data.assigneeId)) {
+        res.status(422).json({ message: "Assignee is not a member of this organization" });
+        return;
+      }
+    }
 
     const task = await Task.create({
       ...data,
@@ -86,14 +115,12 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
       createdBy: userId,
       completedAt: data.status === TaskStatus.COMPLETED ? new Date() : null,
     });
-
     await invalidate(orgId);
     res.status(201).json({ message: "Task created", data: task });
   } catch (error) {
     serverError(res, "Create Task Error", error);
   }
 };
-
 export const getAllTask = async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = ListQuerySchema.safeParse(req.query);
@@ -225,30 +252,38 @@ export const getTaskById = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+
 export const updateTask = async (req: Request, res: Response): Promise<void> => {
   try {
     const params = TaskIdParams.safeParse(req.params);
     if (!params.success) return void badId(res);
-
+    
     const parsed = UpdateTaskSchema.safeParse(req.body);
     if (!parsed.success) {
       validationError(res, parsed.error);
       return;
     }
-
+    
     const { orgId } = req.user!;
     const { taskId } = params.data;
+    
     const loaded = await loadForEdit(req, res, taskId);
     if (!loaded) return;
-
+    
     const data = parsed.data;
-    const $set: Record<string, unknown> = { ...data, ...deriveFields(data) };
 
-    if (data.status !== undefined) {
-      $set.completedAt =
-        data.status === TaskStatus.COMPLETED ? (loaded.task.completedAt ?? new Date()) : null;
+    if (data.assigneeId) {
+      const memberIds = await getOrgMemberIds(orgId);
+      if (memberIds.size > 0 && !memberIds.has(data.assigneeId)) {
+        res.status(422).json({ message: "Assignee is not a member of this organization" });
+        return;
+      }
     }
-    // A new reminder time must be delivered again by the notification service.
+
+    const $set: Record<string, unknown> = { ...data, ...deriveFields(data) };
+    if (data.status !== undefined) {
+      $set.completedAt = data.status === TaskStatus.COMPLETED ? (loaded.task.completedAt ?? new Date()) : null;
+    }
     if (data.reminderAt !== undefined) $set.reminderSentAt = null;
 
     const updated = await Task.findOneAndUpdate(
@@ -256,11 +291,12 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
       { $set },
       { returnDocument: "after", runValidators: true }
     );
+    
     if (!updated) {
       res.status(404).json({ message: "Task not found" });
       return;
     }
-
+    
     await invalidate(orgId, taskId);
     res.status(200).json({ message: "Task updated", data: updated });
   } catch (error) {
@@ -286,7 +322,6 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// ---------- subtasks ----------
 export const addSubtask = async (req: Request, res: Response): Promise<void> => {
   try {
     const params = TaskIdParams.safeParse(req.params);
