@@ -60,7 +60,6 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
     }
 
     const { accessToken, user, activeOrgId, orgs } = res;
-
     setAuth({ ...user, activeOrgId, orgs }, accessToken);
     toast.add({
       title: "Welcome back",
@@ -103,9 +102,8 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
       });
       return { error: res.error || "Registration failed.", success: false };
     }
-    
-    const { accessToken, user, org } = res;
 
+    const { accessToken, user, org } = res;
     setAuth(
       {
         ...user,
@@ -116,6 +114,7 @@ export function LoginForm({ defaultTab = "login" }: LoginFormProps) {
       },
       accessToken,
     );
+
     toast.add({
       title: "Account created",
       description: "Welcome to Task Pulse!",

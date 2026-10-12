@@ -8,6 +8,7 @@ import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -17,13 +18,13 @@ import { User, LogOut, Building2, ChevronDown } from "lucide-react";
 import { apiClient } from "@/app/lib/api-client";
 
 export function DashboardHeader() {
-  const { user, setActiveOrgId, setAccessToken } = useAuthStore();
+  const { user, setActiveOrgId, setAccessToken, logout: clearStore } = useAuthStore();
   const router = useRouter();
   const [isSwitching, setIsSwitching] = useState(false);
 
   const handleLogout = async () => {
     await logout();
-    useAuthStore.getState().logout();
+    clearStore();
     router.push("/login");
   };
 
@@ -35,11 +36,9 @@ export function DashboardHeader() {
       const res = await apiClient.post("/api/auth/switch-org", { orgId });
       const newToken = res.data.token.accessToken;
       
-      // Update store with new token and org ID
       setAccessToken(newToken);
       setActiveOrgId(orgId);
       
-      // Force reload to clear task caches and fetch new org's data
       window.location.href = "/dashboard";
     } catch (error) {
       console.error("Failed to switch org", error);
@@ -52,71 +51,96 @@ export function DashboardHeader() {
   const activeOrg = user?.orgs?.find((org) => org.id === user.activeOrgId);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-bg-subtle bg-white/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+    <header className="sticky top-0 z-30 border-b border-bg-subtle/50 bg-white/70 backdrop-blur-xl transition-colors">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+        
+        {/* Left Side: Logo & Title */}
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-dark text-sm font-display font-bold text-bg-subtle shadow-sm">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-dark text-xs font-display font-bold text-bg-subtle shadow-sm ring-1 ring-black/5">
             TP
           </div>
-          <div>
-            <h1 className="text-lg font-sans font-bold tracking-tight text-foreground">Dashboard</h1>
-            <p className="text-xs font-medium text-muted">Manage your workspace</p>
+          <div className="flex flex-col justify-center">
+            <h1 className="text-sm font-semibold tracking-tight text-foreground">
+              Dashboard
+            </h1>
+            <p className="text-[11px] font-medium text-muted leading-none">
+              Manage your workspace
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        {/* Right Side: User Dropdown */}
+        <div className="flex items-center">
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg border border-bg-subtle bg-white px-3 py-2 text-sm font-semibold text-surface-dark shadow-sm transition-all hover:bg-bg-subtle/50 focus:outline-none focus:ring-2 focus:ring-primary/20">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <User className="h-4 w-4" />
+            <DropdownMenuTrigger className="group flex items-center gap-2 rounded-full border border-bg-subtle/60 bg-white/60 px-2 py-1.5 pr-3 text-sm font-medium text-foreground shadow-sm transition-all hover:bg-bg-subtle/40 hover:border-bg-subtle focus:outline-none focus:ring-2 focus:ring-primary/20">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                <User className="h-3.5 w-3.5" />
               </div>
-              <span className="max-w-[120px] truncate sm:max-w-[200px]">
+              <span className="max-w-[100px] truncate sm:max-w-[160px] text-sm">
                 {activeOrg?.name || user?.name || user?.email}
               </span>
-              <ChevronDown className="h-4 w-4 text-muted" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted transition-transform duration-200 group-data-[state=open]:rotate-180" />
             </DropdownMenuTrigger>
             
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none text-foreground">{user?.name || "User"}</p>
-                  <p className="text-xs leading-none text-muted">{user?.email}</p>
-                </div>
-              </DropdownMenuLabel>
+            <DropdownMenuContent 
+              align="end" 
+              className="w-64 rounded-xl border border-bg-subtle/60 bg-white/95 backdrop-blur-xl shadow-lg shadow-black/5 p-1"
+            >
+              {/* User Info */}
+              <DropdownMenuGroup className="px-2 py-2">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-0.5">
+                    <p className="text-sm font-semibold text-foreground">
+                      {user?.name || "User"}
+                    </p>
+                    <p className="text-xs text-muted truncate">
+                      {user?.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
 
+              {/* Workspaces */}
               {user?.orgs && user.orgs.length > 0 && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs font-semibold text-muted uppercase tracking-wider">
-                    Workspaces
-                  </DropdownMenuLabel>
-                  {user.orgs.map((org) => (
-                    <DropdownMenuItem
-                      key={org.id}
-                      onClick={() => handleSwitchOrg(org.id)}
-                      disabled={isSwitching || user.activeOrgId === org.id}
-                      className="flex cursor-pointer items-center justify-between"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Building2 className="h-3.5 w-3.5 text-muted" />
-                        <span className="truncate">{org.name}</span>
-                      </span>
-                      {user.activeOrgId === org.id && (
-                        <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-                      )}
-                    </DropdownMenuItem>
-                  ))}
+                  <DropdownMenuSeparator className="bg-bg-subtle/60" />
+                  <DropdownMenuGroup className="py-1">
+                    <DropdownMenuLabel className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                      Workspaces
+                    </DropdownMenuLabel>
+                    {user.orgs.map((org) => (
+                      <DropdownMenuItem
+                        key={org.id}
+                        onClick={() => handleSwitchOrg(org.id)}
+                        disabled={isSwitching || user.activeOrgId === org.id}
+                        className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors hover:bg-bg-subtle/50 focus:bg-bg-subtle/50 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Building2 className="h-3.5 w-3.5 text-muted" />
+                          <span className="truncate font-medium text-foreground">
+                            {org.name}
+                          </span>
+                        </span>
+                        {user.activeOrgId === org.id && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary ring-2 ring-white" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
                 </>
               )}
 
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleLogout}
-                className="flex cursor-pointer items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-600"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Log out</span>
-              </DropdownMenuItem>
+              {/* Logout */}
+              <DropdownMenuSeparator className="bg-bg-subtle/60" />
+              <DropdownMenuGroup className="py-1">
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 focus:bg-red-50"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

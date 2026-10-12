@@ -13,7 +13,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setInitializing(true);
 
-        // 1. Refresh token via Next.js proxy
         const refreshRes = await fetch("/api/auth/refresh", {
           method: "POST",
           credentials: "include",
@@ -25,7 +24,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const newAccessToken = refreshData.token.accessToken;
         setAccessToken(newAccessToken);
 
-        // 2. Fetch user profile with orgs
         const meRes = await fetch(`${gatewayUrl}/api/auth/me`, {
           method: "GET",
           headers: {
@@ -39,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const meData = await meRes.json();
         
-        // 3. Hydrate store with user + orgs
+        // ✅ Hydrate store with user + orgs from /me
         const user = {
           ...meData.user,
           activeOrgId: meData.activeOrgId,
@@ -60,9 +58,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   if (isInitializing) {
     return (
-      <div className="h-screen w-full flex flex-col justify-center items-center bg-slate-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600" />
-        <p className="mt-4 text-sm text-slate-500">Verifying session...</p>
+      <div className="h-screen w-full flex flex-col justify-center items-center bg-bg-subtle/30">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        <p className="mt-4 text-sm font-medium text-accent">Verifying session...</p>
       </div>
     );
   }
